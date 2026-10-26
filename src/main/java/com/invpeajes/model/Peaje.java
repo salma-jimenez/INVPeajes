@@ -12,44 +12,89 @@ import java.util.Date;
  * @version 1.0
  */
 public abstract class Peaje {
+    // Atributos de Identificación
     private String idPeaje;
+    private String codigoPeaje;
+    private String idAni;
     private String nombrePeaje;
-    private String idMunicipios; // Llave foránea a Municipio
-    private String idConcesionario; // Llave foránea a Concesionario
-    private String idRuta; // Llave foránea a Ruta
-    private String kilometro; // Ubicación en la vía
-    private String latitud;   // Coordenada geográfica
-    private String longitud;  // Coordenada geográfica
+    
+    // Atributos de Ubicación Geográfica
+    private String kilometro;
+    private String latitud;
+    private String longitud;
+    private String ubicacionDescripcion;
+    private String sentido;
+    
+    // Atributos Operativos
     private String estadoOperativo;
+    private String nivel;
+    private String aceptaColpass;
     private Date fecha;
+    
+    // Atributos de Contacto y Referencia
+    private String telefono;
+    private String telefonoGrua;
+    private String urlFicha;
+
+    // Llaves Foráneas (Relaciones)
+    private String idRuta;
+    private String idConcesionario;
+    private String idSector;
+    private String idDepartamento;
+    private String idMunicipios;
 
     /**
-     * Constructor base para inicializar los datos generales de cualquier peaje.
+     * Constructor base masivo para inicializar todos los datos de la estación de peaje.
      * 
-     * @param idPeaje Identificador único de la estación de peaje.
-     * @param nombrePeaje Nombre comercial o geográfico de la estación.
-     * @param idMunicipios ID del municipio donde está ubicado físicamente.
-     * @param idConcesionario ID del concesionario (ej. INVIAS, ANI) que lo administra.
-     * @param idRuta ID de la ruta a la que pertenece.
-     * @param kilometro Punto kilométrico exacto en la ruta (ej. "Km 45").
-     * @param latitud Coordenada de latitud para geolocalización.
-     * @param longitud Coordenada de longitud para geolocalización.
-     * @param estadoOperativo Estado actual del peaje (Activo o Inactivo).
+     * @param idPeaje Identificador interno de la estación.
+     * @param codigoPeaje Código oficial de la estación.
+     * @param idAni Identificador asignado por la ANI.
+     * @param nombrePeaje Nombre comercial o geográfico.
+     * @param kilometro Punto kilométrico exacto en la ruta.
+     * @param latitud Coordenada de latitud.
+     * @param longitud Coordenada de longitud.
+     * @param ubicacionDescripcion Descripción textual de la ubicación.
+     * @param sentido Sentido del tráfico de la estación.
+     * @param estadoOperativo Estado actual del peaje (Activo/Inactivo).
+     * @param nivel Nivel operativo de la estación.
+     * @param aceptaColpass Indicador de si acepta pago por Colpass (S/N).
      * @param fecha Fecha de registro o actualización.
+     * @param telefono Teléfono de atención de la estación.
+     * @param telefonoGrua Teléfono de servicio de grúa.
+     * @param urlFicha URL al documento de ficha técnica.
+     * @param idRuta ID de la ruta (Llave foránea).
+     * @param idConcesionario ID del concesionario (Llave foránea).
+     * @param idSector ID del sector vial (Llave foránea).
+     * @param idDepartamento ID del departamento (Llave foránea).
+     * @param idMunicipios ID del municipio (Llave foránea).
      */
-    public Peaje(String idPeaje, String nombrePeaje, String kilometro, String latitud, 
-                 String longitud, String estadoOperativo, Date fecha, 
-                 String idRuta, String idConcesionario, String idMunicipios) {
+    public Peaje(String idPeaje, String codigoPeaje, String idAni, String nombrePeaje, 
+                 String kilometro, String latitud, String longitud, String ubicacionDescripcion, 
+                 String sentido, String estadoOperativo, String nivel, String aceptaColpass, 
+                 Date fecha, String telefono, String telefonoGrua, String urlFicha, 
+                 String idRuta, String idConcesionario, String idSector, 
+                 String idDepartamento, String idMunicipios) {
         this.idPeaje = idPeaje;
+        this.codigoPeaje = codigoPeaje;
+        this.idAni = idAni;
         this.nombrePeaje = nombrePeaje;
-        this.idMunicipios = idMunicipios;
-        this.idConcesionario = idConcesionario;
-        this.idRuta = idRuta;
         this.kilometro = kilometro;
         this.latitud = latitud;
         this.longitud = longitud;
+        this.ubicacionDescripcion = ubicacionDescripcion;
+        this.sentido = sentido;
         this.estadoOperativo = estadoOperativo;
+        this.nivel = nivel;
+        this.aceptaColpass = aceptaColpass;
         this.fecha = fecha;
+        this.telefono = telefono;
+        this.telefonoGrua = telefonoGrua;
+        this.urlFicha = urlFicha;
+        this.idRuta = idRuta;
+        this.idConcesionario = idConcesionario;
+        this.idSector = idSector;
+        this.idDepartamento = idDepartamento;
+        this.idMunicipios = idMunicipios;
     }
 
     /**
@@ -211,9 +256,183 @@ public abstract class Peaje {
     public void setFecha(Date fecha) {
         this.fecha = fecha;
     }
-    
-    
 
+    /**
+     * Obtiene el código oficial de la estación de peaje.
+     * @return El código del peaje.
+     */
+    public String getCodigoPeaje() {
+        return codigoPeaje;
+    }
+
+    /**
+     * Establece el código oficial de la estación de peaje.
+     * @param codigoPeaje El nuevo código a asignar.
+     */
+    public void setCodigoPeaje(String codigoPeaje) {
+        this.codigoPeaje = codigoPeaje;
+    }
+
+    /**
+     * Obtiene el identificador asignado por la ANI.
+     * @return El ID de la ANI.
+     */
+    public String getIdAni() {
+        return idAni;
+    }
+
+    /**
+     * Establece el identificador asignado por la ANI.
+     * @param idAni El nuevo ID de la ANI.
+     */
+    public void setIdAni(String idAni) {
+        this.idAni = idAni;
+    }
+
+    /**
+     * Obtiene la descripción textual detallada de la ubicación.
+     * @return La descripción de la ubicación.
+     */
+    public String getUbicacionDescripcion() {
+        return ubicacionDescripcion;
+    }
+
+    /**
+     * Establece la descripción textual de la ubicación del peaje.
+     * @param ubicacionDescripcion La nueva descripción a asignar.
+     */
+    public void setUbicacionDescripcion(String ubicacionDescripcion) {
+        this.ubicacionDescripcion = ubicacionDescripcion;
+    }
+
+    /**
+     * Obtiene el sentido del tráfico que atiende la estación.
+     * @return El sentido del tráfico.
+     */
+    public String getSentido() {
+        return sentido;
+    }
+
+    /**
+     * Establece el sentido del tráfico que atiende la estación.
+     * @param sentido El nuevo sentido a asignar.
+     */
+    public void setSentido(String sentido) {
+        this.sentido = sentido;
+    }
+
+    /**
+     * Obtiene el nivel operativo y jerárquico de la estación.
+     * @return El nivel del peaje.
+     */
+    public String getNivel() {
+        return nivel;
+    }
+
+    /**
+     * Establece el nivel operativo de la estación.
+     * @param nivel El nuevo nivel a asignar.
+     */
+    public void setNivel(String nivel) {
+        this.nivel = nivel;
+    }
+
+    /**
+     * Obtiene el indicador de si la estación acepta pago mediante TAG Colpass.
+     * @return Un carácter (ej. "S" o "N") indicando si acepta Colpass.
+     */
+    public String getAceptaColpass() {
+        return aceptaColpass;
+    }
+
+    /**
+     * Establece el indicador de aceptación de pago por Colpass.
+     * @param aceptaColpass El nuevo indicador (S/N).
+     */
+    public void setAceptaColpass(String aceptaColpass) {
+        this.aceptaColpass = aceptaColpass;
+    }
+
+    /**
+     * Obtiene el teléfono de atención de la estación.
+     * @return El número de teléfono.
+     */
+    public String getTelefono() {
+        return telefono;
+    }
+
+    /**
+     * Establece el teléfono de atención de la estación.
+     * @param telefono El nuevo teléfono a asignar.
+     */
+    public void setTelefono(String telefono) {
+        this.telefono = telefono;
+    }
+
+    /**
+     * Obtiene el teléfono del servicio de grúa adscrito al peaje.
+     * @return El número de teléfono de la grúa.
+     */
+    public String getTelefonoGrua() {
+        return telefonoGrua;
+    }
+
+    /**
+     * Establece el teléfono del servicio de grúa adscrito.
+     * @param telefonoGrua El nuevo teléfono de grúa a asignar.
+     */
+    public void setTelefonoGrua(String telefonoGrua) {
+        this.telefonoGrua = telefonoGrua;
+    }
+
+    /**
+     * Obtiene el enlace URL al documento de la ficha técnica oficial.
+     * @return La URL de la ficha técnica.
+     */
+    public String getUrlFicha() {
+        return urlFicha;
+    }
+
+    /**
+     * Establece el enlace URL a la ficha técnica oficial del peaje.
+     * @param urlFicha La nueva URL a asignar.
+     */
+    public void setUrlFicha(String urlFicha) {
+        this.urlFicha = urlFicha;
+    }
+
+    /**
+     * Obtiene el ID del sector vial al que pertenece el peaje.
+     * @return El ID del sector (Llave foránea).
+     */
+    public String getIdSector() {
+        return idSector;
+    }
+
+    /**
+     * Establece el ID del sector vial.
+     * @param idSector El nuevo ID de sector a asignar.
+     */
+    public void setIdSector(String idSector) {
+        this.idSector = idSector;
+    }
+
+    /**
+     * Obtiene el ID del departamento donde se ubica el peaje.
+     * @return El ID del departamento (Llave foránea).
+     */
+    public String getIdDepartamento() {
+        return idDepartamento;
+    }
+
+    /**
+     * Establece el ID del departamento.
+     * @param idDepartamento El nuevo ID de departamento a asignar.
+     */
+    public void setIdDepartamento(String idDepartamento) {
+        this.idDepartamento = idDepartamento;
+    }
+    
     /**
      * Método abstracto que aplica polimorfismo. 
      * Cada clase hija deberá sobrescribir este método para definir su propia 
