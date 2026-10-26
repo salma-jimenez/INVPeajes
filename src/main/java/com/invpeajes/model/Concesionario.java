@@ -19,6 +19,7 @@ public class Concesionario {
     private String tipoConcesionario;
     private String correo;
     private String telefono;
+    private String direccion;
 
     /**
      * Constructor que inicializa un nuevo Concesionario con sus datos obligatorios.
@@ -30,10 +31,11 @@ public class Concesionario {
      * @param tipoConcesionario Clasificación de la entidad (ej. Pública, Privada).
      * @param correo Correo electrónico de contacto oficial.
      * @param telefono Número de teléfono de contacto.
+     * @param direccion direccion del concesionario.
      */
     public Concesionario(String idConcesionario, String nombreConcesionario, 
             Date fecha, String nit, String tipoConcesionario, String correo, 
-            String telefono) {
+            String telefono, String direccion) {
         this.idConcesionario = idConcesionario;
         this.nombreConcesionario = nombreConcesionario;
         this.fecha = fecha;
@@ -41,6 +43,7 @@ public class Concesionario {
         this.tipoConcesionario = tipoConcesionario;
         this.correo = correo;
         this.telefono = telefono;
+        this.direccion = direccion;
     }
 
     /**
@@ -154,6 +157,20 @@ public class Concesionario {
     public void setTelefono(String telefono) {
         this.telefono = telefono;
     }
-    
-    
+
+    /**
+     * Obtiene el número de teléfono de contacto o atención del concesionario.
+     * @return La direccion de la entidad.
+     */
+    public String getDireccion() {
+        return direccion;
+    }
+
+    /**
+     * Establece o modifica la direccion actual del concesionario.
+     * @param direccion La nueva direccion a asignar.
+     */
+    public void setDireccion(String direccion) {
+        this.direccion = direccion;
+    }
 }
