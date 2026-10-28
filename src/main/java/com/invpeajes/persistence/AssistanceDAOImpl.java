@@ -1,10 +1,10 @@
-
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceHistory;
 import com.invpeajes.model.AssistanceStatus;
 import com.invpeajes.model.AssistanceType;
+import com.invpeajes.model.ResourceAvailability;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Acceso a datos de la tabla 
+ * Acceso a datos de la tabla {@code PEAJE.ASISTENCIA}.
  *
  * <p>Toda operación que cambia el estado de una asistencia deja un registro en
- * {@code PEAJE.HISTORIAL_ASISTENCIA} dentro de la misma transacción.</p>
- * @author Salomejimenez
+ * {@code PEAJE.HISTORIAL_ASISTENCIA} y, si corresponde, actualiza la
+ * disponibilidad del recurso asignado, todo dentro de la misma transacción.</p>
  */
 public class AssistanceDAOImpl implements IAssistanceDAO {
 
@@ -43,19 +43,23 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
             "DELETE FROM PEAJE.ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
     private final AssistanceHistoryDAOImpl historyDAO;
+    private final AssistanceResourceDAOImpl resourceDAO;
 
-    /** Crea el DAO con su DAO de historial por defecto. */
+    /** Crea el DAO con sus DAO auxiliares por defecto. */
     public AssistanceDAOImpl() {
-        this(new AssistanceHistoryDAOImpl());
+        this(new AssistanceHistoryDAOImpl(), new AssistanceResourceDAOImpl());
     }
 
     /**
-     * Crea el DAO con un DAO de historial inyectado.
+     * Crea el DAO con sus DAO auxiliares inyectados. Son implementaciones
+     * concretas porque comparten la transacción mediante métodos del paquete.
      *
-     * @param historyDAO DAO para registrar los cambios de estado
+     * @param historyDAO  DAO para registrar los cambios de estado
+     * @param resourceDAO DAO para actualizar la disponibilidad del recurso
      */
-    public AssistanceDAOImpl(AssistanceHistoryDAOImpl historyDAO) {
+    public AssistanceDAOImpl(AssistanceHistoryDAOImpl historyDAO, AssistanceResourceDAOImpl resourceDAO) {
         this.historyDAO = historyDAO;
+        this.resourceDAO = resourceDAO;
     }
 
     /**
@@ -138,7 +142,8 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
     }
 
     @Override
-    public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes) {
+    public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
+                                ResourceAvailability resourceAvailability) {
         try (Connection con = VehicleConnectionFactory.open()) {
             con.setAutoCommit(false);
             try (PreparedStatement ps = con.prepareStatement(CHANGE_STATUS_SQL)) {
@@ -150,6 +155,9 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
                 if (updated) {
                     historyDAO.insert(con, new AssistanceHistory(assistance.getAssistanceId(),
                             previousStatus, assistance.getCurrentStatus(), notes));
+                    if (resourceAvailability != null && assistance.getResourceId() != null) {
+                        resourceDAO.updateAvailability(con, assistance.getResourceId(), resourceAvailability);
+                    }
                 }
                 con.commit();
                 return updated;
