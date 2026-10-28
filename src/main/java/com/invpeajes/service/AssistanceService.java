@@ -2,21 +2,21 @@ package com.invpeajes.service;
 
 import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceHistory;
+import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceStatus;
-import com.invpeajes.persistence.IAssistanceDAO;
+import com.invpeajes.model.ResourceAvailability;
 import com.invpeajes.persistence.AssistanceDAOImpl;
-import com.invpeajes.persistence.IAssistanceHistoryDAO;
 import com.invpeajes.persistence.AssistanceHistoryDAOImpl;
+import com.invpeajes.persistence.IAssistanceDAO;
+import com.invpeajes.persistence.IAssistanceHistoryDAO;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Reglas de negocio para la gestión de auxilios viales: registro, asignación de
- * recursos, avance de estados, cierre y cancelación.
- *
- * @author Salomejimenez
+ * Reglas de negocio para la gestión de auxilios viales: registro,
+ * asignación de recursos, avance de estados, cierre y cancelación.
  */
 public class AssistanceService {
 
@@ -29,26 +29,28 @@ public class AssistanceService {
     private final IAssistanceDAO assistanceDAO;
     private final IAssistanceHistoryDAO historyDAO;
     private final VehicleService vehicleService;
+    private final AssistanceResourceService resourceService;
 
-    /**
-     * Crea el servicio con sus dependencias por defecto.
-     */
+    /** Crea el servicio con sus dependencias por defecto. */
     public AssistanceService() {
-        this(new AssistanceDAOImpl(), new AssistanceHistoryDAOImpl(), new VehicleService());
+        this(new AssistanceDAOImpl(), new AssistanceHistoryDAOImpl(), new VehicleService(),
+                new AssistanceResourceService());
     }
 
     /**
      * Crea el servicio con dependencias inyectadas.
      *
-     * @param assistanceDAO DAO de asistencias
-     * @param historyDAO DAO de historial para consultas
-     * @param vehicleService servicio para verificar placas
+     * @param assistanceDAO   DAO de asistencias
+     * @param historyDAO      DAO de historial para consultas
+     * @param vehicleService  servicio para verificar placas
+     * @param resourceService servicio para consultar recursos de asistencia
      */
     public AssistanceService(IAssistanceDAO assistanceDAO, IAssistanceHistoryDAO historyDAO,
-            VehicleService vehicleService) {
+                             VehicleService vehicleService, AssistanceResourceService resourceService) {
         this.assistanceDAO = assistanceDAO;
         this.historyDAO = historyDAO;
         this.vehicleService = vehicleService;
+        this.resourceService = resourceService;
     }
 
     /**
@@ -65,15 +67,42 @@ public class AssistanceService {
     }
 
     /**
+     * Lista los recursos que se pueden asignar a una asistencia: disponibles,
+     * del mismo tipo y del mismo peaje.
+     *
+     * @param assistanceId asistencia que necesita un recurso
+     * @return recursos candidatos
+     */
+    public List<AssistanceResource> listCandidateResources(int assistanceId) {
+        Assistance assistance = get(assistanceId);
+        return resourceService.listAvailable(assistance.getType(), assistance.getTollId());
+    }
+
+    /**
      * Asigna un recurso (grúa, ambulancia...) y pasa la asistencia a ASSIGNED.
+     * El recurso queda EN_SERVICIO hasta que la asistencia se cierre.
      *
      * @param assistanceId asistencia a atender
-     * @param resourceId recurso de asistencia asignado
+     * @param resourceId   recurso de asistencia asignado
      */
     public void assignResource(int assistanceId, int resourceId) {
         Assistance assistance = get(assistanceId);
+        AssistanceResource resource = resourceService.get(resourceId);
+        if (!resource.isAvailable()) {
+            throw new ValidationException("El recurso " + resource.getIdentification() + " no está disponible ("
+                    + resource.getAvailability().getDbValue() + ")");
+        }
+        if (resource.getType() != assistance.getType()) {
+            throw new ValidationException("La asistencia requiere " + assistance.getType().getDbValue()
+                    + " y el recurso es " + resource.getType().getDbValue());
+        }
+        if (resource.getTollId() != assistance.getTollId()) {
+            throw new ValidationException("El recurso pertenece al peaje " + resource.getTollId()
+                    + " y la asistencia la atiende el peaje " + assistance.getTollId());
+        }
         assistance.setResourceId(resourceId);
-        applyChange(assistance, AssistanceStatus.ASSIGNED, "Recurso " + resourceId + " asignado");
+        applyChange(assistance, AssistanceStatus.ASSIGNED,
+                "Recurso " + resource.getIdentification() + " asignado");
     }
 
     /**
@@ -98,8 +127,8 @@ public class AssistanceService {
      * Cierra la asistencia como ATTENDED registrando su costo final.
      *
      * @param assistanceId asistencia a cerrar
-     * @param cost costo del servicio (0 si es gratuito)
-     * @param notes detalle del cierre
+     * @param cost         costo del servicio (0 si es gratuito)
+     * @param notes        detalle del cierre
      */
     public void complete(int assistanceId, BigDecimal cost, String notes) {
         if (cost == null || cost.signum() < 0) {
@@ -114,7 +143,7 @@ public class AssistanceService {
      * Cancela una asistencia que aún no ha empezado a atenderse.
      *
      * @param assistanceId asistencia a cancelar
-     * @param reason razón de la cancelación (obligatoria)
+     * @param reason       razón de la cancelación (obligatoria)
      */
     public void cancel(int assistanceId, String reason) {
         if (reason == null || reason.trim().isEmpty()) {
@@ -207,7 +236,17 @@ public class AssistanceService {
             throw new ValidationException("Debe asignar un recurso antes de pasar a ASIGNADA");
         }
         assistance.setCurrentStatus(next);
-        assistanceDAO.changeStatus(assistance, previous, notes);
+        assistanceDAO.changeStatus(assistance, previous, notes, resourceAvailabilityAfter(next));
+    }
+
+    private ResourceAvailability resourceAvailabilityAfter(AssistanceStatus next) {
+        if (next == AssistanceStatus.ASSIGNED) {
+            return ResourceAvailability.IN_SERVICE;
+        }
+        if (next == AssistanceStatus.ATTENDED || next == AssistanceStatus.CANCELLED) {
+            return ResourceAvailability.AVAILABLE;
+        }
+        return null;
     }
 
     private String describeAllowed(AssistanceStatus status) {
@@ -253,5 +292,4 @@ public class AssistanceService {
     private String textOrDefault(String text, String defaultText) {
         return text == null || text.trim().isEmpty() ? defaultText : text.trim();
     }
-
 }
