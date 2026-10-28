@@ -9,10 +9,10 @@ import java.util.Date;
  * Es una clase base de la cual dependen las estaciones de peaje.
  * 
  * @author Luis Guerrero
- * @version 1.0
+ * @version 1.1
  */
 public class Concesionario {
-    private String idConcesionario;
+    private int idConcesionario;
     private String nombreConcesionario;
     private Date fecha;
     private String nit;
@@ -20,20 +20,19 @@ public class Concesionario {
     private String correo;
     private String telefono;
     private String direccion;
-
     /**
-     * Constructor que inicializa un nuevo Concesionario con sus datos obligatorios.
-     * 
-     * @param idConcesionario Identificador alfanumérico único (NIT o código interno).
-     * @param nombreConcesionario Nombre oficial de la empresa o entidad administradora.
-     * @param fecha Fecha de registro o constitución.
-     * @param nit Número de Identificación Tributaria del concesionario.
-     * @param tipoConcesionario Clasificación de la entidad (ej. Pública, Privada).
-     * @param correo Correo electrónico de contacto oficial.
-     * @param telefono Número de teléfono de contacto.
-     * @param direccion direccion del concesionario.
+     * Constructor que inicializa un nuevo Concesionario con sus datos.
+     *
+     * @param idConcesionario Identificador numérico único del concesionario.
+     * @param nombreConcesionario Nombre oficial de la empresa o entidad (único en la BD).
+     * @param fecha Fecha de registro o constitución (puede ser null).
+     * @param nit Número de Identificación Tributaria (puede ser null).
+     * @param tipoConcesionario Clasificación de la entidad: INVIAS, CONCESION u OTRO.
+     * @param correo Correo electrónico de contacto oficial (puede ser null).
+     * @param telefono Número de teléfono de contacto (puede ser null).
+     * @param direccion Dirección del concesionario (puede ser null).
      */
-    public Concesionario(String idConcesionario, String nombreConcesionario, 
+    public Concesionario(int idConcesionario, String nombreConcesionario, 
             Date fecha, String nit, String tipoConcesionario, String correo, 
             String telefono, String direccion) {
         this.idConcesionario = idConcesionario;
@@ -48,9 +47,9 @@ public class Concesionario {
 
     /**
      * Obtiene el identificador del concesionario.
-     * @return El ID o NIT del concesionario.
+     * @return El ID del concesionario.
      */
-    public String getIdConcesionario() {
+    public int getIdConcesionario() {
         return idConcesionario;
     }
 
@@ -58,7 +57,7 @@ public class Concesionario {
      * Establece o modifica el identificador del concesionario.
      * @param idConcesionario El nuevo ID a asignar.
      */
-    public void setIdConcesionario(String idConcesionario) {
+    public void setIdConcesionario(int idConcesionario) {
         this.idConcesionario = idConcesionario;
     }
 
@@ -111,16 +110,16 @@ public class Concesionario {
     }
 
     /**
-     * Obtiene la clasificación o tipo de la entidad administradora.
-     * @return El tipo de concesionario (ej. Pública, Privada).
+     * Obtiene la clasificación de la entidad administradora.
+     * @return INVIAS, CONCESION u OTRO.
      */
     public String getTipoConcesionario() {
         return tipoConcesionario;
     }
 
     /**
-     * Establece o modifica la clasificación o tipo de la entidad administradora.
-     * @param tipoConcesionario El nuevo tipo de concesionario a asignar.
+     * Establece o modifica la clasificación de la entidad administradora.
+     * @param tipoConcesionario INVIAS, CONCESION u OTRO.
      */
     public void setTipoConcesionario(String tipoConcesionario) {
         this.tipoConcesionario = tipoConcesionario;
@@ -159,16 +158,16 @@ public class Concesionario {
     }
 
     /**
-     * Obtiene el número de teléfono de contacto o atención del concesionario.
-     * @return La direccion de la entidad.
+     * Obtiene la dirección del concesionario.
+     * @return La dirección de la entidad.
      */
     public String getDireccion() {
         return direccion;
     }
 
     /**
-     * Establece o modifica la direccion actual del concesionario.
-     * @param direccion La nueva direccion a asignar.
+     * Establece o modifica la dirección del concesionario.
+     * @param direccion La nueva dirección a asignar.
      */
     public void setDireccion(String direccion) {
         this.direccion = direccion;
