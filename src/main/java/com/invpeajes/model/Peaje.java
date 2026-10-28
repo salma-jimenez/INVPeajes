@@ -13,15 +13,15 @@ import java.util.Date;
  */
 public abstract class Peaje {
     // Atributos de Identificación
-    private String idPeaje;
+    private int idPeaje;
     private String codigoPeaje;
-    private String idAni;
+    private Integer idAni;
     private String nombrePeaje;
     
     // Atributos de Ubicación Geográfica
     private String kilometro;
-    private String latitud;
-    private String longitud;
+    private double latitud;
+    private double longitud;
     private String ubicacionDescripcion;
     private String sentido;
     
@@ -38,10 +38,9 @@ public abstract class Peaje {
 
     // Llaves Foráneas (Relaciones)
     private String idRuta;
-    private String idConcesionario;
-    private String idSector;
+    private Integer idConcesionario;
+    private Integer idSector;
     private String idDepartamento;
-    private String idMunicipios;
 
     /**
      * Constructor base masivo para inicializar todos los datos de la estación de peaje.
@@ -66,14 +65,13 @@ public abstract class Peaje {
      * @param idConcesionario ID del concesionario (Llave foránea).
      * @param idSector ID del sector vial (Llave foránea).
      * @param idDepartamento ID del departamento (Llave foránea).
-     * @param idMunicipios ID del municipio (Llave foránea).
      */
-    public Peaje(String idPeaje, String codigoPeaje, String idAni, String nombrePeaje, 
-                 String kilometro, String latitud, String longitud, String ubicacionDescripcion, 
+    public Peaje(int idPeaje, String codigoPeaje, Integer idAni, String nombrePeaje, 
+                 String kilometro, double latitud, double longitud, String ubicacionDescripcion, 
                  String sentido, String estadoOperativo, String nivel, String aceptaColpass, 
                  Date fecha, String telefono, String telefonoGrua, String urlFicha, 
-                 String idRuta, String idConcesionario, String idSector, 
-                 String idDepartamento, String idMunicipios) {
+                 String idRuta, Integer idConcesionario, Integer idSector, 
+                 String idDepartamento) {
         this.idPeaje = idPeaje;
         this.codigoPeaje = codigoPeaje;
         this.idAni = idAni;
@@ -94,14 +92,13 @@ public abstract class Peaje {
         this.idConcesionario = idConcesionario;
         this.idSector = idSector;
         this.idDepartamento = idDepartamento;
-        this.idMunicipios = idMunicipios;
     }
 
     /**
      * Obtiene el identificador del peaje.
      * @return El ID del peaje.
      */
-    public String getIdPeaje() {
+    public int getIdPeaje() {
         return idPeaje;
     }
 
@@ -109,7 +106,7 @@ public abstract class Peaje {
      * Establece el identificador del peaje.
      * @param idPeaje El nuevo ID a asignar.
      */
-    public void setIdPeaje(String idPeaje) {
+    public void setIdPeaje(int idPeaje) {
         this.idPeaje = idPeaje;
     }
 
@@ -130,26 +127,10 @@ public abstract class Peaje {
     }
 
     /**
-     * Obtiene el ID del municipio donde se ubica el peaje.
-     * @return El ID del municipio asociado.
-     */
-    public String getIdMunicipios() {
-        return idMunicipios;
-    }
-
-    /**
-     * Establece el ID del municipio.
-     * @param idMunicipios El nuevo ID de municipio.
-     */
-    public void setIdMunicipios(String idMunicipios) {
-        this.idMunicipios = idMunicipios;
-    }
-
-    /**
      * Obtiene el ID del concesionario que administra el peaje.
      * @return El ID del concesionario.
      */
-    public String getIdConcesionario() {
+    public Integer getIdConcesionario() {
         return idConcesionario;
     }
 
@@ -157,7 +138,7 @@ public abstract class Peaje {
      * Establece el ID del concesionario administrador.
      * @param idConcesionario El nuevo ID de concesionario.
      */
-    public void setIdConcesionario(String idConcesionario) {
+    public void setIdConcesionario(Integer idConcesionario) {
         this.idConcesionario = idConcesionario;
     }
     
@@ -181,7 +162,7 @@ public abstract class Peaje {
      * Obtiene la latitud geográfica del peaje.
      * @return La coordenada de latitud.
      */
-    public String getLatitud() {
+    public double getLatitud() {
         return latitud;
     }
     
@@ -189,7 +170,7 @@ public abstract class Peaje {
      * Establece la latitud geográfica del peaje.
      * @param latitud La nueva coordenada de latitud a asignar.
      */
-    public void setLatitud(String latitud) {
+    public void setLatitud(double latitud) {
         this.latitud = latitud;
     }
 
@@ -197,7 +178,7 @@ public abstract class Peaje {
      * Obtiene la longitud geográfica del peaje.
      * @return La coordenada de longitud.
      */
-    public String getLongitud() {
+    public double getLongitud() {
         return longitud;
     }
     
@@ -205,7 +186,7 @@ public abstract class Peaje {
      * Establece la longitud geográfica del peaje.
      * @param longitud La nueva coordenada de longitud a asignar.
      */
-    public void setLongitud(String longitud) {
+    public void setLongitud(double longitud) {
         this.longitud = longitud;
     }
 
@@ -227,7 +208,7 @@ public abstract class Peaje {
 
     /**
      * Obtiene el estado operativo actual del peaje.
-     * @return El estado operativo (ej. Activo, Inactivo).
+     * @return El estado operativo (OPERATIVO, NO_OPERATIVO, SINIESTRADO o SIN_TARIFA).
      */
     public String getEstadoOperativo() {
         return estadoOperativo;
@@ -277,7 +258,7 @@ public abstract class Peaje {
      * Obtiene el identificador asignado por la ANI.
      * @return El ID de la ANI.
      */
-    public String getIdAni() {
+    public Integer getIdAni() {
         return idAni;
     }
 
@@ -285,7 +266,7 @@ public abstract class Peaje {
      * Establece el identificador asignado por la ANI.
      * @param idAni El nuevo ID de la ANI.
      */
-    public void setIdAni(String idAni) {
+    public void setIdAni(Integer idAni) {
         this.idAni = idAni;
     }
 
@@ -405,7 +386,7 @@ public abstract class Peaje {
      * Obtiene el ID del sector vial al que pertenece el peaje.
      * @return El ID del sector (Llave foránea).
      */
-    public String getIdSector() {
+    public Integer getIdSector() {
         return idSector;
     }
 
@@ -413,7 +394,7 @@ public abstract class Peaje {
      * Establece el ID del sector vial.
      * @param idSector El nuevo ID de sector a asignar.
      */
-    public void setIdSector(String idSector) {
+    public void setIdSector(Integer idSector) {
         this.idSector = idSector;
     }
 
