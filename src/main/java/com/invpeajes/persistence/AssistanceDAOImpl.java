@@ -245,3 +245,4 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
         a.setTicketId(JdbcUtils.getNullableLong(rs, "ID_TIQUETE"));
         return a;
     }
+}
