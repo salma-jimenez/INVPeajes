@@ -1,9 +1,9 @@
 
-
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceStatus;
+import com.invpeajes.model.ResourceAvailability;
 
 import java.util.List;
 
@@ -38,14 +38,17 @@ public interface IAssistanceDAO extends CrudDAO<Assistance, Integer> {
     List<Assistance> findByToll(int tollId);
 
     /**
-     * Guarda el nuevo estado de la asistencia y registra el cambio en el
-     * historial dentro de una sola transacción.
+     * Guarda el nuevo estado de la asistencia, registra el cambio en el
+     * historial y actualiza la disponibilidad del recurso asignado, todo en
+     * una sola transacción.
      *
-     * @param assistance     asistencia con el estado nuevo ya asignado
-     * @param previousStatus estado que tenía antes del cambio
-     * @param notes          motivo del cambio
+     * @param assistance           asistencia con el estado nuevo ya asignado
+     * @param previousStatus       estado que tenía antes del cambio
+     * @param notes                motivo del cambio
+     * @param resourceAvailability nueva disponibilidad del recurso asignado,
+     *                             o null si el recurso no cambia
      * @return true si se actualizó la asistencia
      */
-    boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes);
-    
+    boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
+                         ResourceAvailability resourceAvailability);
 }
