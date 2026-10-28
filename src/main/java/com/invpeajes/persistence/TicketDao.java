@@ -1,7 +1,6 @@
 package com.invpeajes.persistence;
  
 import com.invpeajes.model.Ticket;
-import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -41,8 +40,6 @@ public class TicketDao {
     private static final String NEXT_SEQUENCE =
             "SELECT NVL(MAX(CONSECUTIVO), 0) + 1 FROM PEAJE.TIQUETE WHERE PREFIJO = ?";
  
-    private static final String TOLL_PRICE =
-            "SELECT PRECIO FROM PEAJE.PEAJE_CATEGORIA WHERE ID_PEAJE = ? AND ID_CATEGORIA = ?";
  
     /**
      * Registra un tiquete nuevo. Oracle genera el identificador y se asigna
@@ -167,24 +164,6 @@ public class TicketDao {
         }
     }
  
-    /**
-     * Consulta la tarifa vigente de un peaje para una categoría vehicular.
-     *
-     * @param tollId     identificador del peaje
-     * @param categoryId identificador de la categoría vehicular
-     * @return precio de la tarifa, o {@code null} si el peaje no tiene tarifa para esa categoría
-     * @throws SQLException si ocurre un error en la consulta
-     */
-    public BigDecimal findTollPrice(int tollId, int categoryId) throws SQLException {
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(TOLL_PRICE)) {
-            statement.setInt(1, tollId);
-            statement.setInt(2, categoryId);
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next() ? result.getBigDecimal("PRECIO") : null;
-            }
-        }
-    }
  
     private void fillStatement(PreparedStatement statement, Ticket ticket) throws SQLException {
         statement.setString(1, ticket.getPrefix());

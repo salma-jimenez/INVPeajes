@@ -8,6 +8,6 @@ package com.invpeajes.service;
  *
  * @author salma
  */
-public class ser {
+public class TollRateService {
     
 }
