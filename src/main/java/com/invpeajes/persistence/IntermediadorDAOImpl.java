@@ -17,7 +17,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class IntermediadorDAOImpl implements IintermediadorDAO {
+public class IntermediadorDAOImpl implements IIntermediadorDAO {
 
     private static final String COLUMNS = "ID_INTERMEDIADOR, NOMBRE";
 
