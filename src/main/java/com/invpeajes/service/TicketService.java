@@ -1,5 +1,5 @@
 package com.invpeajes.service;
- 
+
 import com.invpeajes.model.Ticket;
 import com.invpeajes.persistence.TicketDao;
 import java.math.BigDecimal;
@@ -7,7 +7,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
- 
+
 /**
  * Reglas de negocio para el cobro de peajes y la emisión de tiquetes.
  * <p>
@@ -22,26 +22,26 @@ import java.util.List;
  * </p>
  */
 public class TicketService {
- 
+
     /** Métodos de pago que acepta la tabla {@code TIQUETE}. */
     public static final List<String> PAYMENT_METHODS = List.of("EFECTIVO", "TARJETA", "TAG_COLPASS");
- 
+
     private static final String TAG_PAYMENT = "TAG_COLPASS";
     private static final int MAX_PLATE_LENGTH = 10;
     private static final int MAX_TAG_LENGTH = 30;
     private static final int ORACLE_CHILD_RECORD_ERROR = 2292;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
- 
+
     private final TicketDao ticketDAO;
     private final TollRateService tollRateService;
- 
+
     /**
      * Crea el servicio con sus dependencias por defecto.
      */
     public TicketService() {
         this(new TicketDao(), new TollRateService());
     }
- 
+
     /**
      * Crea el servicio con dependencias específicas.
      * Permite reemplazarlas en pruebas.
@@ -53,7 +53,7 @@ public class TicketService {
         this.ticketDAO = ticketDAO;
         this.tollRateService = tollRateService;
     }
- 
+
     /**
      * Calcula cuánto debe pagar un vehículo sin registrar el cobro.
      * Sirve para mostrar el valor al usuario antes de confirmar el pago.
@@ -71,7 +71,7 @@ public class TicketService {
         BigDecimal services = normalizeServiceAmount(serviceAmount);
         return findTollPrice(tollId, categoryId).add(services);
     }
- 
+
     /**
      * Registra el cobro de un peaje y emite su tiquete.
      * <p>
@@ -101,17 +101,17 @@ public class TicketService {
         String tag = normalizeTagCode(method, tagCode);
         BigDecimal services = normalizeServiceAmount(serviceAmount);
         BigDecimal tollPrice = findTollPrice(tollId, categoryId);
- 
+
         String prefix = buildPrefix(tollId);
         long sequenceNumber = ticketDAO.findNextSequenceNumber(prefix);
         LocalDateTime now = LocalDateTime.now();
- 
+
         Ticket ticket = new Ticket(prefix, sequenceNumber, now, tollPrice, services, method,
                 tag, plate, categoryId, boothId, normalizeOptional(operatorId));
         ticket.setPaymentTime(now.format(TIME_FORMAT));
         return ticketDAO.create(ticket);
     }
- 
+
     /**
      * Busca un tiquete por su identificador.
      *
@@ -127,7 +127,7 @@ public class TicketService {
         }
         return ticket;
     }
- 
+
     /**
      * Consulta todos los tiquetes registrados.
      *
@@ -137,7 +137,7 @@ public class TicketService {
     public List<Ticket> findAll() throws SQLException {
         return ticketDAO.findAll();
     }
- 
+
     /**
      * Consulta el historial de cobros de un vehículo.
      *
@@ -149,7 +149,7 @@ public class TicketService {
     public List<Ticket> findByLicensePlate(String licensePlate) throws SQLException {
         return ticketDAO.findByLicensePlate(normalizeLicensePlate(licensePlate));
     }
- 
+
     /**
      * Calcula el total recaudado en una lista de tiquetes.
      *
@@ -163,7 +163,7 @@ public class TicketService {
         }
         return total;
     }
- 
+
     /**
      * Elimina un tiquete.
      *
@@ -185,15 +185,15 @@ public class TicketService {
             throw e;
         }
     }
- 
+
     private BigDecimal findTollPrice(int tollId, int categoryId) throws SQLException {
         return tollRateService.findPrice(tollId, categoryId);
     }
- 
+
     private String buildPrefix(int tollId) {
         return String.format("P%03d", tollId);
     }
- 
+
     private String normalizeLicensePlate(String licensePlate) {
         if (licensePlate == null || licensePlate.isBlank()) {
             throw new IllegalArgumentException("La placa es obligatoria.");
@@ -205,7 +205,7 @@ public class TicketService {
         }
         return plate;
     }
- 
+
     private String normalizePaymentMethod(String paymentMethod) {
         String method = paymentMethod == null ? "" : paymentMethod.trim().toUpperCase();
         if (!PAYMENT_METHODS.contains(method)) {
@@ -214,7 +214,7 @@ public class TicketService {
         }
         return method;
     }
- 
+
     private String normalizeTagCode(String paymentMethod, String tagCode) {
         String tag = normalizeOptional(tagCode);
         if (TAG_PAYMENT.equals(paymentMethod)) {
@@ -229,7 +229,7 @@ public class TicketService {
         }
         return null;
     }
- 
+
     private BigDecimal normalizeServiceAmount(BigDecimal serviceAmount) {
         if (serviceAmount == null) {
             return BigDecimal.ZERO;
@@ -239,11 +239,11 @@ public class TicketService {
         }
         return serviceAmount;
     }
- 
+
     private String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
- 
+
     private void validatePositive(long value, String fieldName) {
         if (value <= 0) {
             throw new IllegalArgumentException(fieldName + " debe tener un identificador mayor que cero.");
