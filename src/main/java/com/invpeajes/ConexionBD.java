@@ -16,17 +16,19 @@ public class ConexionBD {
         try {
             Class.forName("oracle.jdbc.OracleDriver");
             conexion = DriverManager.getConnection(URL, USUARIO, PASSWORD);
-
+            
             // --- ESTAS LÍNEAS TE CONFIRMAN LA CONEXIÓN EXACTA ---
             DatabaseMetaData meta = conexion.getMetaData();
             System.out.println("¡Conexión exitosa!");
             System.out.println("Conectado a la BD: " + meta.getDatabaseProductName() + " " + meta.getDatabaseProductVersion());
             System.out.println("Usuario de BD: " + meta.getUserName());
             System.out.println("URL usada: " + meta.getURL());
-
+            // ----------------------------------------------------
+            
         } catch (ClassNotFoundException | SQLException e) {
             System.out.println("Error de conexión: " + e.getMessage());
         }
         return conexion;
     }
 }
+
