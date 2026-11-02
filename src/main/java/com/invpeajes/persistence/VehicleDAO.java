@@ -16,7 +16,7 @@ import java.util.Optional;
  *
  * @author Salomejimenez
  */
-public class VehicleDAOImpl implements IVehicleDAO {
+public class VehicleDAO implements CrudDAO<Vehicle, String> {
 
     private static final String INSERT_SQL
             = "INSERT INTO PEAJE.VEHICULOS (PLACA, TIPO, MARCA, CODIGO_TAG, ID_INTERMEDIADOR, ID_CATEGORIA) "
@@ -57,7 +57,12 @@ public class VehicleDAOImpl implements IVehicleDAO {
         return findOne(FIND_BY_PLATE_SQL, plate, "Error al buscar la placa " + plate);
     }
 
-    @Override
+    /**
+     * Busca el vehículo asociado a un código de tag COLPASS.
+     *
+     * @param tagCode código del tag
+     * @return el vehículo si existe
+     */
     public Optional<Vehicle> findByTag(String tagCode) {
         return findOne(FIND_BY_TAG_SQL, tagCode, "Error al buscar el tag " + tagCode);
     }
@@ -71,7 +76,12 @@ public class VehicleDAOImpl implements IVehicleDAO {
         }
     }
 
-    @Override
+    /**
+     * Lista los vehículos de una categoría.
+     *
+     * @param categoryId categoría a filtrar
+     * @return vehículos de esa categoría
+     */
     public List<Vehicle> findByCategory(int categoryId) {
         try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(FIND_BY_CATEGORY_SQL)) {
             ps.setInt(1, categoryId);
@@ -98,7 +108,14 @@ public class VehicleDAOImpl implements IVehicleDAO {
         }
     }
 
-    @Override
+    /**
+     * Asigna o retira el tag COLPASS de un vehículo.
+     *
+     * @param plate placa del vehículo
+     * @param tagCode código del tag (null para retirarlo)
+     * @param intermediaryId intermediador emisor (null para retirarlo)
+     * @return true si se actualizó el vehículo
+     */
     public boolean updateTag(String plate, String tagCode, Integer intermediaryId) {
         try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(UPDATE_TAG_SQL)) {
             ps.setString(1, tagCode);

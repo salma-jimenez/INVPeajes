@@ -16,13 +16,17 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Acceso a datos de la tabla {@code PEAJE.ASISTENCIA}.
+ * Acceso a datos de las tablas {@code PEAJE.ASISTENCIA} y
+ * {@code PEAJE.HISTORIAL_ASISTENCIA}.
  *
- * <p>Toda operación que cambia el estado de una asistencia deja un registro en
- * {@code PEAJE.HISTORIAL_ASISTENCIA} y, si corresponde, actualiza la
- * disponibilidad del recurso asignado, todo dentro de la misma transacción.</p>
+ * <p>El historial se maneja aquí porque solo existe ligado a una asistencia:
+ * toda operación que cambia el estado de una asistencia deja su registro de
+ * historial y, si corresponde, actualiza la disponibilidad del recurso
+ * asignado, todo dentro de la misma transacción.</p>
+ *
+ * @author Salomejimenez
  */
-public class AssistanceDAOImpl implements IAssistanceDAO {
+public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
 
     private static final String COLUMNS =
             "ID_ASISTENCIA, TIPO_ASISTENCIA, FECHA_SOLICITUD, LATITUD_INCIDENTE, LONGITUD_INCIDENTE, "
@@ -42,23 +46,31 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
     private static final String DELETE_SQL =
             "DELETE FROM PEAJE.ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
-    private final AssistanceHistoryDAOImpl historyDAO;
-    private final AssistanceResourceDAOImpl resourceDAO;
+    private static final String HISTORY_NEXT_ID_SQL =
+            "SELECT NVL(MAX(ID_HISTORIAL), 0) + 1 FROM PEAJE.HISTORIAL_ASISTENCIA";
+    private static final String HISTORY_INSERT_SQL =
+            "INSERT INTO PEAJE.HISTORIAL_ASISTENCIA "
+            + "(ID_HISTORIAL, ESTADO_ANTERIOR, ESTADO_NUEVO, FECHA_CAMBIO, OBSERVACIONES, ID_ASISTENCIA) "
+            + "VALUES (?, ?, ?, ?, ?, ?)";
+    private static final String HISTORY_FIND_SQL =
+            "SELECT * FROM PEAJE.HISTORIAL_ASISTENCIA WHERE ID_ASISTENCIA = ? "
+            + "ORDER BY FECHA_CAMBIO, ID_HISTORIAL";
+    private static final String HISTORY_DELETE_SQL =
+            "DELETE FROM PEAJE.HISTORIAL_ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
-    /** Crea el DAO con sus DAO auxiliares por defecto. */
-    public AssistanceDAOImpl() {
-        this(new AssistanceHistoryDAOImpl(), new AssistanceResourceDAOImpl());
+    private final AssistanceResourceDAO resourceDAO;
+
+    /** Crea el DAO con su DAO de recursos por defecto. */
+    public AssistanceDAO() {
+        this(new AssistanceResourceDAO());
     }
 
     /**
-     * Crea el DAO con sus DAO auxiliares inyectados. Son implementaciones
-     * concretas porque comparten la transacción mediante métodos del paquete.
+     * Crea el DAO con un DAO de recursos inyectado.
      *
-     * @param historyDAO  DAO para registrar los cambios de estado
      * @param resourceDAO DAO para actualizar la disponibilidad del recurso
      */
-    public AssistanceDAOImpl(AssistanceHistoryDAOImpl historyDAO, AssistanceResourceDAOImpl resourceDAO) {
-        this.historyDAO = historyDAO;
+    public AssistanceDAO(AssistanceResourceDAO resourceDAO) {
         this.resourceDAO = resourceDAO;
     }
 
@@ -73,7 +85,7 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
             try {
                 assistance.setAssistanceId(nextId(con));
                 insertRow(con, assistance);
-                historyDAO.insert(con, new AssistanceHistory(assistance.getAssistanceId(), null,
+                insertHistory(con, new AssistanceHistory(assistance.getAssistanceId(), null,
                         assistance.getCurrentStatus(), "Solicitud registrada"));
                 con.commit();
             } catch (SQLException e) {
@@ -98,19 +110,34 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
                 "Error al listar las asistencias");
     }
 
-    @Override
+    /**
+     * Lista las asistencias que están en un estado dado.
+     *
+     * @param status estado a filtrar
+     * @return asistencias en ese estado, más recientes primero
+     */
     public List<Assistance> findByStatus(AssistanceStatus status) {
         return query(SELECT_SQL + "WHERE ESTADO_ACTUAL = ? ORDER BY FECHA_SOLICITUD DESC",
                 status.getDbValue(), "Error al listar asistencias en estado " + status.getDbValue());
     }
 
-    @Override
+    /**
+     * Lista las asistencias prestadas a un vehículo.
+     *
+     * @param plate placa del vehículo
+     * @return asistencias del vehículo, más recientes primero
+     */
     public List<Assistance> findByPlate(String plate) {
         return query(SELECT_SQL + "WHERE PLACA = ? ORDER BY FECHA_SOLICITUD DESC",
                 plate, "Error al listar asistencias de la placa " + plate);
     }
 
-    @Override
+    /**
+     * Lista las asistencias atendidas desde un peaje.
+     *
+     * @param tollId peaje a filtrar
+     * @return asistencias del peaje, más recientes primero
+     */
     public List<Assistance> findByToll(int tollId) {
         return query(SELECT_SQL + "WHERE ID_PEAJE = ? ORDER BY FECHA_SOLICITUD DESC",
                 tollId, "Error al listar asistencias del peaje " + tollId);
@@ -141,7 +168,18 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
         }
     }
 
-    @Override
+    /**
+     * Guarda el nuevo estado de la asistencia, registra el cambio en el
+     * historial y actualiza la disponibilidad del recurso asignado, todo en
+     * una sola transacción.
+     *
+     * @param assistance           asistencia con el estado nuevo ya asignado
+     * @param previousStatus       estado que tenía antes del cambio
+     * @param notes                motivo del cambio
+     * @param resourceAvailability nueva disponibilidad del recurso asignado,
+     *                             o null si el recurso no cambia
+     * @return true si se actualizó la asistencia
+     */
     public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
                                 ResourceAvailability resourceAvailability) {
         try (Connection con = VehicleConnectionFactory.open()) {
@@ -153,7 +191,7 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
                 ps.setInt(4, assistance.getAssistanceId());
                 boolean updated = ps.executeUpdate() > 0;
                 if (updated) {
-                    historyDAO.insert(con, new AssistanceHistory(assistance.getAssistanceId(),
+                    insertHistory(con, new AssistanceHistory(assistance.getAssistanceId(),
                             previousStatus, assistance.getCurrentStatus(), notes));
                     if (resourceAvailability != null && assistance.getResourceId() != null) {
                         resourceDAO.updateAvailability(con, assistance.getResourceId(), resourceAvailability);
@@ -176,8 +214,10 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
     public boolean delete(Integer id) {
         try (Connection con = VehicleConnectionFactory.open()) {
             con.setAutoCommit(false);
-            try (PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
-                historyDAO.deleteByAssistance(con, id);
+            try (PreparedStatement history = con.prepareStatement(HISTORY_DELETE_SQL);
+                 PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
+                history.setInt(1, id);
+                history.executeUpdate();
                 ps.setInt(1, id);
                 boolean deleted = ps.executeUpdate() > 0;
                 con.commit();
@@ -188,6 +228,28 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
             }
         } catch (SQLException e) {
             throw new DataAccessException("Error al eliminar la asistencia " + id, e);
+        }
+    }
+
+    /**
+     * Lista los cambios de estado de una asistencia en orden cronológico.
+     *
+     * @param assistanceId asistencia a consultar
+     * @return historial de la asistencia
+     */
+    public List<AssistanceHistory> findHistory(int assistanceId) {
+        List<AssistanceHistory> history = new ArrayList<>();
+        try (Connection con = VehicleConnectionFactory.open();
+             PreparedStatement ps = con.prepareStatement(HISTORY_FIND_SQL)) {
+            ps.setInt(1, assistanceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    history.add(mapHistoryRow(rs));
+                }
+            }
+            return history;
+        } catch (SQLException e) {
+            throw new DataAccessException("Error al consultar el historial de la asistencia " + assistanceId, e);
         }
     }
 
@@ -206,6 +268,24 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
             ps.setInt(11, a.getTollId());
             JdbcUtils.setNullableInt(ps, 12, a.getResourceId());
             JdbcUtils.setNullableLong(ps, 13, a.getTicketId());
+            ps.executeUpdate();
+        }
+    }
+
+    private void insertHistory(Connection con, AssistanceHistory history) throws SQLException {
+        try (PreparedStatement idPs = con.prepareStatement(HISTORY_NEXT_ID_SQL);
+             ResultSet rs = idPs.executeQuery()) {
+            rs.next();
+            history.setHistoryId(rs.getLong(1));
+        }
+        AssistanceStatus previous = history.getPreviousStatus();
+        try (PreparedStatement ps = con.prepareStatement(HISTORY_INSERT_SQL)) {
+            ps.setLong(1, history.getHistoryId());
+            ps.setString(2, previous == null ? null : previous.getDbValue());
+            ps.setString(3, history.getNewStatus().getDbValue());
+            ps.setTimestamp(4, Timestamp.valueOf(history.getChangeDate()));
+            ps.setString(5, history.getNotes());
+            ps.setInt(6, history.getAssistanceId());
             ps.executeUpdate();
         }
     }
@@ -252,5 +332,16 @@ public class AssistanceDAOImpl implements IAssistanceDAO {
         a.setResourceId(JdbcUtils.getNullableInt(rs, "ID_RECURSO"));
         a.setTicketId(JdbcUtils.getNullableLong(rs, "ID_TIQUETE"));
         return a;
+    }
+
+    private AssistanceHistory mapHistoryRow(ResultSet rs) throws SQLException {
+        AssistanceHistory history = new AssistanceHistory();
+        history.setHistoryId(rs.getLong("ID_HISTORIAL"));
+        history.setPreviousStatus(AssistanceStatus.fromDbValue(rs.getString("ESTADO_ANTERIOR")));
+        history.setNewStatus(AssistanceStatus.fromDbValue(rs.getString("ESTADO_NUEVO")));
+        history.setChangeDate(rs.getTimestamp("FECHA_CAMBIO").toLocalDateTime());
+        history.setNotes(rs.getString("OBSERVACIONES"));
+        history.setAssistanceId(rs.getInt("ID_ASISTENCIA"));
+        return history;
     }
 }
