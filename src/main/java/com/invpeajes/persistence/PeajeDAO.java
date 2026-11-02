@@ -14,13 +14,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Implementación JDBC del DAO de Peaje sobre Oracle (tabla PEAJE). Cumple con
- * el contrato definido en {@link IPeajeDAO}.
+ * Implementación JDBC del DAO de Peaje sobre Oracle (tabla PEAJE). Implementa
+ * el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Peaje.
  *
  * @author Luis Guerrero
  * @version 2.0
  */
-public class PeajeDAOImpl implements IPeajeDAO {
+public class PeajeDAO implements CrudDAO<Peaje, Integer> {
 
     private static final String COLUMNS
             = "ID_PEAJE, CODIGO_PEAJE, ID_ANI, NOMBRE, KILOMETRO, "
@@ -158,13 +158,23 @@ public class PeajeDAOImpl implements IPeajeDAO {
     // ------------------------------------------------------------------
     // Consultas propias de Peaje
     // ------------------------------------------------------------------
-    @Override
+    /**
+     * Lista los peajes de un departamento.
+     * @param idDepartamento Código del departamento (2 caracteres, ej. "20").
+     * @return Peajes del departamento, ordenados por nombre.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Peaje> findByDepartment(String idDepartamento) {
         return findByText(SQL_FIND_BY_DEPARTMENT, idDepartamento,
                 "No se pudo listar los peajes del departamento " + idDepartamento);
     }
 
-    @Override
+    /**
+     * Lista los peajes según su estado operativo.
+     * @param estadoOperativo OPERATIVO, NO_OPERATIVO, SINIESTRADO o SIN_TARIFA.
+     * @return Peajes con ese estado, ordenados por nombre.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Peaje> findByOperationalStatus(String estadoOperativo) {
         return findByText(SQL_FIND_BY_STATUS, estadoOperativo,
                 "No se pudo listar los peajes con estado " + estadoOperativo);

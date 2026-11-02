@@ -12,7 +12,7 @@ import java.util.Optional;
 
 /**
  * Implementación JDBC del DAO de Ruta sobre Oracle (tabla RUTA).
- * Cumple el contrato de {@link IRutaDAO}.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Ruta.
  *
  * Las columnas de municipio se nombran explícitamente (ID_MUN_ORIGEN, ID_MUN_DESTINO)
  * porque en la tabla están en orden inverso al del constructor de {@link Ruta}.
@@ -20,7 +20,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class RutaDAOImpl implements IRutaDAO {
+public class RutaDAO implements CrudDAO<Ruta, String> {
 
     private static final String COLUMNS = "ID_RUTA, NOMBRE_RUTA, ID_MUN_ORIGEN, ID_MUN_DESTINO";
 
@@ -140,7 +140,12 @@ public class RutaDAOImpl implements IRutaDAO {
         }
     }
 
-    @Override
+    /**
+     * Lista las rutas que inician o terminan en un municipio.
+     * @param idMunicipio Código del municipio (5 caracteres, ej. "20001").
+     * @return Rutas que pasan por ese municipio como origen o destino, ordenadas por nombre.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Ruta> findByMunicipality(String idMunicipio) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_MUNICIPALITY)) {

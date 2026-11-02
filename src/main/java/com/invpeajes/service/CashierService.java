@@ -8,10 +8,9 @@ import com.invpeajes.model.Ticket;
 import com.invpeajes.model.TollRate;
 import com.invpeajes.model.Vehicle;
 import com.invpeajes.model.VehicleCategory;
-import com.invpeajes.persistence.CasetaDAOImpl;
+import com.invpeajes.persistence.CasetaDAO;
 import com.invpeajes.persistence.CashierDAOImpl;
 import com.invpeajes.persistence.DataAccessException;
-import com.invpeajes.persistence.ICasetaDAO;
 import com.invpeajes.persistence.ICashierDAO;
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -76,7 +75,7 @@ public class CashierService {
     private static final int MAX_ATTEMPTS = 3;
 
     private final ICashierDAO cashierDAO;
-    private final ICasetaDAO boothDAO;
+    private final CasetaDAO boothDAO;
     private final TollRateService rateService;
     private final VehicleCategoryService categoryService;
     private final VehicleService vehicleService;
@@ -86,7 +85,7 @@ public class CashierService {
      * Crea el servicio con las implementaciones de la base de datos.
      */
     public CashierService() {
-        this(new CashierDAOImpl(), new CasetaDAOImpl(), new TollRateService(),
+        this(new CashierDAOImpl(), new CasetaDAO(), new TollRateService(),
                 new VehicleCategoryService(), new VehicleService(), new TicketService());
     }
 
@@ -99,7 +98,7 @@ public class CashierService {
      * @param vehicleService Servicio de vehículos.
      * @param ticketService Servicio de tiquetes.
      */
-    public CashierService(ICashierDAO cashierDAO, ICasetaDAO boothDAO, TollRateService rateService,
+    public CashierService(ICashierDAO cashierDAO, CasetaDAO boothDAO, TollRateService rateService,
                           VehicleCategoryService categoryService, VehicleService vehicleService,
                           TicketService ticketService) {
         this.cashierDAO = cashierDAO;

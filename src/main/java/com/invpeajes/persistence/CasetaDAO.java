@@ -12,7 +12,7 @@ import java.util.Optional;
 
 /**
  * Implementación JDBC del DAO de Caseta sobre Oracle (tabla CASETAS).
- * Cumple el contrato de {@link ICasetaDAO}.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Caseta.
  *
  * El ID de la caseta lo genera Oracle (columna IDENTITY): al insertar no se envía,
  * y el número generado se asigna de vuelta al objeto.
@@ -20,7 +20,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class CasetaDAOImpl implements ICasetaDAO {
+public class CasetaDAO implements CrudDAO<Caseta, Integer> {
 
     private static final String COLUMNS =
             "ID_CASETA, NUMERO_CASETA, TIPO_PAGO, SENTIDO, ESTADO, ID_PEAJE";
@@ -150,7 +150,12 @@ public class CasetaDAOImpl implements ICasetaDAO {
         }
     }
 
-    @Override
+    /**
+     * Lista las casetas de una estación de peaje.
+     * @param idPeaje ID del peaje.
+     * @return Casetas del peaje, ordenadas por número.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Caseta> findByToll(int idPeaje) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TOLL)) {
@@ -165,7 +170,13 @@ public class CasetaDAOImpl implements ICasetaDAO {
         }
     }
 
-    @Override
+    /**
+     * Cambia solo el estado de una caseta.
+     * @param idCaseta ID de la caseta.
+     * @param estado ACTIVA, INACTIVA o MANTENIMIENTO.
+     * @return true si se actualizó; false si no existe una caseta con ese ID.
+     * @throws DataAccessException Si falla la actualización.
+     */
     public boolean updateStatus(int idCaseta, String estado) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE_STATUS)) {
