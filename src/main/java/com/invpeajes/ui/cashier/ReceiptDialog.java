@@ -92,7 +92,7 @@ public class ReceiptDialog extends JDialog {
         if (s.getConcessionaire() != null) {
             wrap(s.getConcessionaire()).forEach(l -> out.add(center(l)));
         }
-        out.add(center("Caseta " + s.getBooth().getNumeroCaseta()));
+        out.add(center("Caseta " + s.getBooth().getBoothNumber()));
         if (copy) {
             out.add(center("*** COPIA ***"));
         }

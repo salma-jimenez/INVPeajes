@@ -1,7 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.ConexionBD;
-import com.invpeajes.model.Ruta;
+import com.invpeajes.model.Route;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,12 +15,12 @@ import java.util.Optional;
  * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Ruta.
  *
  * Las columnas de municipio se nombran explícitamente (ID_MUN_ORIGEN, ID_MUN_DESTINO)
- * porque en la tabla están en orden inverso al del constructor de {@link Ruta}.
+ * porque en la tabla están en orden inverso al del constructor de {@link Route}.
  *
  * @author Luis Guerrero
  * @version 1.0
  */
-public class RutaDAO implements CrudDAO<Ruta, String> {
+public class RouteDAO implements CrudDAO<Route, String> {
 
     private static final String COLUMNS = "ID_RUTA, NOMBRE_RUTA, ID_MUN_ORIGEN, ID_MUN_DESTINO";
 
@@ -44,42 +44,42 @@ public class RutaDAO implements CrudDAO<Ruta, String> {
 
     /**
      * Inserta una nueva ruta.
-     * @param ruta Ruta a guardar.
+     * @param route Ruta a guardar.
      * @throws DataAccessException Si falla la inserción (por ejemplo, ID repetido
      *                             o municipio inexistente).
      */
     @Override
-    public void insert(Ruta ruta) {
+    public void insert(Route route) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
-            ps.setString(1, ruta.getIdRuta());
-            setFields(ps, ruta, 2);
+            ps.setString(1, route.getRouteId());
+            setFields(ps, route, 2);
             ps.executeUpdate();
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo guardar la ruta " + ruta.getIdRuta(), e);
+            throw new DataAccessException("No se pudo guardar la ruta " + route.getRouteId(), e);
         }
     }
 
     /**
      * Busca una ruta por su ID.
-     * @param idRuta ID de la ruta.
+     * @param routeId ID de la ruta.
      * @return La ruta si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Ruta> findById(String idRuta) {
+    public Optional<Route> findById(String routeId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setString(1, idRuta);
+            ps.setString(1, routeId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar la ruta " + idRuta, e);
+            throw new DataAccessException("No se pudo buscar la ruta " + routeId, e);
         }
     }
 
@@ -89,7 +89,7 @@ public class RutaDAO implements CrudDAO<Ruta, String> {
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public List<Ruta> findAll() {
+    public List<Route> findAll() {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
@@ -103,81 +103,81 @@ public class RutaDAO implements CrudDAO<Ruta, String> {
 
     /**
      * Actualiza los datos de una ruta existente.
-     * @param ruta Ruta con los datos nuevos.
+     * @param route Ruta con los datos nuevos.
      * @return true si se actualizó; false si no existe una ruta con ese ID.
      * @throws DataAccessException Si falla la actualización.
      */
     @Override
-    public boolean update(Ruta ruta) {
+    public boolean update(Route route) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
-            setFields(ps, ruta, 1);
-            ps.setString(4, ruta.getIdRuta());
+            setFields(ps, route, 1);
+            ps.setString(4, route.getRouteId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo actualizar la ruta " + ruta.getIdRuta(), e);
+            throw new DataAccessException("No se pudo actualizar la ruta " + route.getRouteId(), e);
         }
     }
 
     /**
      * Elimina una ruta por su ID.
-     * @param idRuta ID de la ruta.
+     * @param routeId ID de la ruta.
      * @return true si se eliminó; false si no existe una ruta con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si tiene peajes asociados).
      */
     @Override
-    public boolean delete(String idRuta) {
+    public boolean delete(String routeId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setString(1, idRuta);
+            ps.setString(1, routeId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar la ruta " + idRuta, e);
+            throw new DataAccessException("No se pudo eliminar la ruta " + routeId, e);
         }
     }
 
     /**
      * Lista las rutas que inician o terminan en un municipio.
-     * @param idMunicipio Código del municipio (5 caracteres, ej. "20001").
+     * @param municipalityId Código del municipio (5 caracteres, ej. "20001").
      * @return Rutas que pasan por ese municipio como origen o destino, ordenadas por nombre.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public List<Ruta> findByMunicipality(String idMunicipio) {
+    public List<Route> findByMunicipality(String municipalityId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_MUNICIPALITY)) {
 
-            ps.setString(1, idMunicipio);
-            ps.setString(2, idMunicipio);
+            ps.setString(1, municipalityId);
+            ps.setString(2, municipalityId);
             try (ResultSet rs = ps.executeQuery()) {
                 return mapList(rs);
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo listar las rutas del municipio " + idMunicipio, e);
+            throw new DataAccessException("No se pudo listar las rutas del municipio " + municipalityId, e);
         }
     }
 
     /** Asigna nombre, origen y destino empezando en el índice {@code start}. */
-    private void setFields(PreparedStatement ps, Ruta r, int start) throws SQLException {
-        ps.setString(start, r.getNombreRuta());
-        ps.setString(start + 1, r.getMunicipioOrigenId());
-        ps.setString(start + 2, r.getMunicipioDestinoId());
+    private void setFields(PreparedStatement ps, Route r, int start) throws SQLException {
+        ps.setString(start, r.getName());
+        ps.setString(start + 1, r.getOriginMunicipalityId());
+        ps.setString(start + 2, r.getDestinationMunicipalityId());
     }
 
-    private List<Ruta> mapList(ResultSet rs) throws SQLException {
-        List<Ruta> rutas = new ArrayList<>();
+    private List<Route> mapList(ResultSet rs) throws SQLException {
+        List<Route> routes = new ArrayList<>();
         while (rs.next()) {
-            rutas.add(mapRow(rs));
+            routes.add(mapRow(rs));
         }
-        return rutas;
+        return routes;
     }
 
-    private Ruta mapRow(ResultSet rs) throws SQLException {
-        return new Ruta(
+    private Route mapRow(ResultSet rs) throws SQLException {
+        return new Route(
                 rs.getString("ID_RUTA"),
                 rs.getString("NOMBRE_RUTA"),
                 rs.getString("ID_MUN_ORIGEN"),

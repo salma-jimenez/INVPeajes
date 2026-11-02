@@ -18,7 +18,7 @@ public final class CashierSession {
     private final String tollPhone;
     private final String towPhone;
     private final String concessionaire;
-    private final Caseta booth;
+    private final TollBooth booth;
 
     /**
      * Crea la sesión de un operador.
@@ -36,7 +36,7 @@ public final class CashierSession {
      */
     public CashierSession(String operatorId, String operatorName, String role, int tollId,
                           String tollName, String tollStatus, String tollPhone, String towPhone,
-                          String concessionaire, Caseta booth) {
+                          String concessionaire, TollBooth booth) {
         this.operatorId = operatorId;
         this.operatorName = operatorName;
         this.role = role;
@@ -54,7 +54,7 @@ public final class CashierSession {
      * @param booth Caseta elegida al abrir el turno.
      * @return Nueva sesión con la caseta.
      */
-    public CashierSession withBooth(Caseta booth) {
+    public CashierSession withBooth(TollBooth booth) {
         return new CashierSession(operatorId, operatorName, role, tollId, tollName, tollStatus,
                 tollPhone, towPhone, concessionaire, booth);
     }
@@ -87,5 +87,5 @@ public final class CashierSession {
     public String getConcessionaire() { return concessionaire; }
 
     /** @return Caseta del turno, o null si no se ha elegido. */
-    public Caseta getBooth() { return booth; }
+    public TollBooth getBooth() { return booth; }
 }

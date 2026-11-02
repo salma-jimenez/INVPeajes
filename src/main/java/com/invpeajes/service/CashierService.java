@@ -1,6 +1,6 @@
 package com.invpeajes.service;
 
-import com.invpeajes.model.Caseta;
+import com.invpeajes.model.TollBooth;
 import com.invpeajes.model.CashierSession;
 import com.invpeajes.model.CategoryRate;
 import com.invpeajes.model.ChargeReceipt;
@@ -8,7 +8,7 @@ import com.invpeajes.model.Ticket;
 import com.invpeajes.model.TollRate;
 import com.invpeajes.model.Vehicle;
 import com.invpeajes.model.VehicleCategory;
-import com.invpeajes.persistence.CasetaDAO;
+import com.invpeajes.persistence.TollBoothDAO;
 import com.invpeajes.persistence.CashierDAOImpl;
 import com.invpeajes.persistence.DataAccessException;
 import com.invpeajes.persistence.ICashierDAO;
@@ -75,7 +75,7 @@ public class CashierService {
     private static final int MAX_ATTEMPTS = 3;
 
     private final ICashierDAO cashierDAO;
-    private final CasetaDAO boothDAO;
+    private final TollBoothDAO boothDAO;
     private final TollRateService rateService;
     private final VehicleCategoryService categoryService;
     private final VehicleService vehicleService;
@@ -85,7 +85,7 @@ public class CashierService {
      * Crea el servicio con las implementaciones de la base de datos.
      */
     public CashierService() {
-        this(new CashierDAOImpl(), new CasetaDAO(), new TollRateService(),
+        this(new CashierDAOImpl(), new TollBoothDAO(), new TollRateService(),
                 new VehicleCategoryService(), new VehicleService(), new TicketService());
     }
 
@@ -98,7 +98,7 @@ public class CashierService {
      * @param vehicleService Servicio de vehículos.
      * @param ticketService Servicio de tiquetes.
      */
-    public CashierService(ICashierDAO cashierDAO, CasetaDAO boothDAO, TollRateService rateService,
+    public CashierService(ICashierDAO cashierDAO, TollBoothDAO boothDAO, TollRateService rateService,
                           VehicleCategoryService categoryService, VehicleService vehicleService,
                           TicketService ticketService) {
         this.cashierDAO = cashierDAO;
@@ -141,9 +141,9 @@ public class CashierService {
      * @param session Sesión del operador.
      * @return Casetas en estado ACTIVA, ordenadas por número.
      */
-    public List<Caseta> availableBooths(CashierSession session) {
+    public List<TollBooth> availableBooths(CashierSession session) {
         return boothDAO.findByToll(session.getTollId()).stream()
-                .filter(b -> BOOTH_ACTIVE.equals(b.getEstado()))
+                .filter(b -> BOOTH_ACTIVE.equals(b.getStatus()))
                 .collect(Collectors.toList());
     }
 
@@ -154,17 +154,17 @@ public class CashierService {
      * @return Sesión con la caseta asignada.
      * @throws IllegalArgumentException Si la caseta es de otro peaje o no está activa.
      */
-    public CashierSession openShift(CashierSession session, Caseta booth) {
+    public CashierSession openShift(CashierSession session, TollBooth booth) {
         if (booth == null) {
             throw new IllegalArgumentException("Seleccione una caseta");
         }
-        if (booth.getIdPeaje() != session.getTollId()) {
-            throw new IllegalArgumentException("La caseta " + booth.getNumeroCaseta()
+        if (booth.getTollId() != session.getTollId()) {
+            throw new IllegalArgumentException("La caseta " + booth.getBoothNumber()
                     + " no pertenece al peaje " + session.getTollName());
         }
-        if (!BOOTH_ACTIVE.equals(booth.getEstado())) {
-            throw new IllegalArgumentException("La caseta " + booth.getNumeroCaseta() + " está "
-                    + booth.getEstado());
+        if (!BOOTH_ACTIVE.equals(booth.getStatus())) {
+            throw new IllegalArgumentException("La caseta " + booth.getBoothNumber() + " está "
+                    + booth.getStatus());
         }
         return session.withBooth(booth);
     }
@@ -200,11 +200,11 @@ public class CashierService {
      * @param booth Caseta del turno.
      * @return Métodos de pago permitidos.
      */
-    public List<String> allowedMethods(Caseta booth) {
+    public List<String> allowedMethods(TollBooth booth) {
         if (booth == null) {
             return Collections.emptyList();
         }
-        switch (booth.getTipoPago()) {
+        switch (booth.getPaymentType()) {
             case "EFECTIVO":
                 return Arrays.asList(CASH, CARD);
             case "COLPASS":
@@ -258,7 +258,7 @@ public class CashierService {
      * @return El cobro anterior si es un posible repetido, o vacío.
      */
     public Optional<ChargeReceipt> findRecentDuplicate(List<ChargeReceipt> shiftReceipts, String plate,
-                                                       Caseta booth, LocalDateTime now) {
+                                                       TollBooth booth, LocalDateTime now) {
         String normalized;
         try {
             normalized = normalizePlate(plate);
@@ -268,7 +268,7 @@ public class CashierService {
         LocalDateTime limit = now.minus(DUPLICATE_WINDOW);
         return shiftReceipts.stream()
                 .filter(r -> r.getPlate().equals(normalized))
-                .filter(r -> r.getSession().getBooth().getIdCaseta().equals(booth.getIdCaseta()))
+                .filter(r -> r.getSession().getBooth().getBoothId().equals(booth.getBoothId()))
                 .filter(r -> r.getDateTime().isAfter(limit))
                 .findFirst();
     }
@@ -299,8 +299,8 @@ public class CashierService {
                         + " no tiene tarifa para la categoría seleccionada"));
 
         if (!allowedMethods(session.getBooth()).contains(paymentMethod)) {
-            throw new IllegalArgumentException("La caseta " + session.getBooth().getNumeroCaseta()
-                    + " (" + session.getBooth().getTipoPago() + ") no acepta pago con " + paymentMethod);
+            throw new IllegalArgumentException("La caseta " + session.getBooth().getBoothNumber()
+                    + " (" + session.getBooth().getPaymentType() + ") no acepta pago con " + paymentMethod);
         }
         String normalizedPlate = normalizePlate(plate);
 
@@ -345,7 +345,7 @@ public class CashierService {
     private Ticket saveTicket(CashierSession session, int categoryId, String plate, String method, String tag) {
         for (int attempt = 1; ; attempt++) {
             try {
-                return ticketService.registerPayment(session.getTollId(), session.getBooth().getIdCaseta(),
+                return ticketService.registerPayment(session.getTollId(), session.getBooth().getBoothId(),
                         plate, categoryId, method, tag, BigDecimal.ZERO, session.getOperatorId());
             } catch (SQLException e) {
                 if (e.getErrorCode() != ORA_UNIQUE_VIOLATION || attempt >= MAX_ATTEMPTS) {

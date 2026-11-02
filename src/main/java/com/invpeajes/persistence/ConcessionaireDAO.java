@@ -1,7 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.ConexionBD;
-import com.invpeajes.model.Concesionario;
+import com.invpeajes.model.Concessionaire;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -18,7 +18,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class ConcesionarioDAO implements CrudDAO<Concesionario, Integer> {
+public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
 
     private static final String COLUMNS =
             "ID_CONCESIONARIO, NOMBRE, FECHA, NIT, TIPO_CONCESIONARIO, CORREO, TELEFONO, DIRECCION";
@@ -45,42 +45,42 @@ public class ConcesionarioDAO implements CrudDAO<Concesionario, Integer> {
 
     /**
      * Inserta un nuevo concesionario.
-     * @param concesionario Concesionario a guardar (el ID se envía, no lo genera Oracle).
+     * @param concessionaire Concesionario a guardar (el ID se envía, no lo genera Oracle).
      * @throws DataAccessException Si falla la inserción (por ejemplo, ID o nombre repetido).
      */
     @Override
-    public void insert(Concesionario concesionario) {
+    public void insert(Concessionaire concessionaire) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
-            ps.setInt(1, concesionario.getIdConcesionario());
-            setFields(ps, concesionario, 2);
+            ps.setInt(1, concessionaire.getConcessionaireId());
+            setFields(ps, concessionaire, 2);
             ps.executeUpdate();
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo guardar el concesionario "
-                    + concesionario.getNombreConcesionario(), e);
+                    + concessionaire.getName(), e);
         }
     }
 
     /**
      * Busca un concesionario por su ID.
-     * @param idConcesionario ID del concesionario.
+     * @param concessionaireId ID del concesionario.
      * @return El concesionario si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Concesionario> findById(Integer idConcesionario) {
+    public Optional<Concessionaire> findById(Integer concessionaireId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setInt(1, idConcesionario);
+            ps.setInt(1, concessionaireId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el concesionario " + idConcesionario, e);
+            throw new DataAccessException("No se pudo buscar el concesionario " + concessionaireId, e);
         }
     }
 
@@ -90,7 +90,7 @@ public class ConcesionarioDAO implements CrudDAO<Concesionario, Integer> {
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public List<Concesionario> findAll() {
+    public List<Concessionaire> findAll() {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
@@ -104,111 +104,111 @@ public class ConcesionarioDAO implements CrudDAO<Concesionario, Integer> {
 
     /**
      * Actualiza los datos de un concesionario existente.
-     * @param concesionario Concesionario con los datos nuevos.
+     * @param concessionaire Concesionario con los datos nuevos.
      * @return true si se actualizó; false si no existe un concesionario con ese ID.
      * @throws DataAccessException Si falla la actualización.
      */
     @Override
-    public boolean update(Concesionario concesionario) {
+    public boolean update(Concessionaire concessionaire) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
-            setFields(ps, concesionario, 1);
-            ps.setInt(8, concesionario.getIdConcesionario());
+            setFields(ps, concessionaire, 1);
+            ps.setInt(8, concessionaire.getConcessionaireId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo actualizar el concesionario "
-                    + concesionario.getIdConcesionario(), e);
+                    + concessionaire.getConcessionaireId(), e);
         }
     }
 
     /**
      * Elimina un concesionario por su ID.
-     * @param idConcesionario ID del concesionario.
+     * @param concessionaireId ID del concesionario.
      * @return true si se eliminó; false si no existe un concesionario con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si administra peajes).
      */
     @Override
-    public boolean delete(Integer idConcesionario) {
+    public boolean delete(Integer concessionaireId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setInt(1, idConcesionario);
+            ps.setInt(1, concessionaireId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar el concesionario " + idConcesionario, e);
+            throw new DataAccessException("No se pudo eliminar el concesionario " + concessionaireId, e);
         }
     }
 
     /**
      * Busca un concesionario por su nombre exacto (el nombre es único en la BD).
-     * @param nombre Nombre del concesionario.
+     * @param name Nombre del concesionario.
      * @return El concesionario si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public Optional<Concesionario> findByName(String nombre) {
+    public Optional<Concessionaire> findByName(String name) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
 
-            ps.setString(1, nombre);
+            ps.setString(1, name);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el concesionario " + nombre, e);
+            throw new DataAccessException("No se pudo buscar el concesionario " + name, e);
         }
     }
 
     /**
      * Lista los concesionarios de un tipo.
-     * @param tipoConcesionario INVIAS, CONCESION u OTRO.
+     * @param type INVIAS, CONCESION u OTRO.
      * @return Concesionarios de ese tipo, ordenados por nombre.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public List<Concesionario> findByType(String tipoConcesionario) {
+    public List<Concessionaire> findByType(String type) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TYPE)) {
 
-            ps.setString(1, tipoConcesionario);
+            ps.setString(1, type);
             try (ResultSet rs = ps.executeQuery()) {
                 return mapList(rs);
             }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar los concesionarios de tipo "
-                    + tipoConcesionario, e);
+                    + type, e);
         }
     }
 
     /** Asigna los 7 campos que no son la llave, empezando en el índice {@code start}. */
-    private void setFields(PreparedStatement ps, Concesionario c, int start) throws SQLException {
+    private void setFields(PreparedStatement ps, Concessionaire c, int start) throws SQLException {
         int i = start;
-        ps.setString(i++, c.getNombreConcesionario());
-        if (c.getFecha() != null) {
-            ps.setDate(i++, new java.sql.Date(c.getFecha().getTime()));
+        ps.setString(i++, c.getName());
+        if (c.getDate() != null) {
+            ps.setDate(i++, new java.sql.Date(c.getDate().getTime()));
         } else {
             ps.setNull(i++, Types.DATE);
         }
         ps.setString(i++, c.getNit());
-        ps.setString(i++, c.getTipoConcesionario());
-        ps.setString(i++, c.getCorreo());
-        ps.setString(i++, c.getTelefono());
-        ps.setString(i, c.getDireccion());
+        ps.setString(i++, c.getType());
+        ps.setString(i++, c.getEmail());
+        ps.setString(i++, c.getPhone());
+        ps.setString(i, c.getAddress());
     }
 
-    private List<Concesionario> mapList(ResultSet rs) throws SQLException {
-        List<Concesionario> concesionarios = new ArrayList<>();
+    private List<Concessionaire> mapList(ResultSet rs) throws SQLException {
+        List<Concessionaire> concessionaires = new ArrayList<>();
         while (rs.next()) {
-            concesionarios.add(mapRow(rs));
+            concessionaires.add(mapRow(rs));
         }
-        return concesionarios;
+        return concessionaires;
     }
 
-    private Concesionario mapRow(ResultSet rs) throws SQLException {
-        return new Concesionario(
+    private Concessionaire mapRow(ResultSet rs) throws SQLException {
+        return new Concessionaire(
                 rs.getInt("ID_CONCESIONARIO"),
                 rs.getString("NOMBRE"),
                 rs.getDate("FECHA"),

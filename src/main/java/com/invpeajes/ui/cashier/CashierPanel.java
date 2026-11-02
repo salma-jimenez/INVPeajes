@@ -188,7 +188,7 @@ public class CashierPanel extends JPanel {
             b.addActionListener(e -> selectMethod(entry.getKey()));
             if (!allowedMethods.contains(entry.getKey())) {
                 b.setEnabled(false);
-                b.setToolTipText("La caseta es " + session.getBooth().getTipoPago());
+                b.setToolTipText("La caseta es " + session.getBooth().getPaymentType());
             }
             methodButtons.put(entry.getKey(), b);
             methods.add(b);

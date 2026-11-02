@@ -151,7 +151,7 @@ public class CashierFrame extends JFrame {
 
         top.add(info("OPERADOR", session.getOperatorName()));
         top.add(info("PEAJE", session.getTollName()));
-        top.add(info("CASETA", session.getBooth().getNumeroCaseta() + " · " + session.getBooth().getTipoPago()));
+        top.add(info("CASETA", session.getBooth().getBoothNumber() + " · " + session.getBooth().getPaymentType()));
         top.add(info("TURNO DESDE", openedAt.format(HOUR)));
 
         JPanel bottom = new JPanel(new BorderLayout(0, 14));
@@ -183,7 +183,7 @@ public class CashierFrame extends JFrame {
         pageTitle.setForeground(Theme.TEXT);
         left.add(pageTitle);
         left.add(Theme.muted("Peaje " + session.getTollName() + " · Caseta "
-                + session.getBooth().getNumeroCaseta() + " (" + session.getBooth().getTipoPago() + ")"));
+                + session.getBooth().getBoothNumber() + " (" + session.getBooth().getPaymentType() + ")"));
 
         JPanel right = new JPanel(new GridLayout(2, 1));
         right.setOpaque(false);
@@ -202,7 +202,7 @@ public class CashierFrame extends JFrame {
     private void closeShift() {
         String summary = "<html><b>Resumen del turno</b><br><br>"
                 + "Operador: " + session.getOperatorName() + "<br>"
-                + "Peaje " + session.getTollName() + " · Caseta " + session.getBooth().getNumeroCaseta() + "<br>"
+                + "Peaje " + session.getTollName() + " · Caseta " + session.getBooth().getBoothNumber() + "<br>"
                 + "Desde " + openedAt.format(HOUR) + " hasta " + LocalDateTime.now().format(HOUR) + "<br><br>"
                 + "Cobros: <b>" + log.count() + "</b><br>"
                 + "Recaudado: <b>" + Theme.money(log.total()) + "</b><br>"
