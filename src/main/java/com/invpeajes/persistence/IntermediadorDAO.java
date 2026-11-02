@@ -12,12 +12,12 @@ import java.util.Optional;
 
 /**
  * Implementación JDBC del DAO de Intermediador sobre Oracle (tabla INTERMEDIADOR).
- * Cumple el contrato de {@link IIntermediadorDAO}.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Intermediador.
  *
  * @author Luis Guerrero
  * @version 1.0
  */
-public class IntermediadorDAOImpl implements IIntermediadorDAO {
+public class IntermediadorDAO implements CrudDAO<Intermediador, Integer> {
 
     private static final String COLUMNS = "ID_INTERMEDIADOR, NOMBRE";
 
@@ -140,7 +140,12 @@ public class IntermediadorDAOImpl implements IIntermediadorDAO {
         }
     }
 
-    @Override
+    /**
+     * Busca un intermediador por su nombre, sin distinguir mayúsculas.
+     * @param nombre Nombre del intermediador (ej. "flypass").
+     * @return El intermediador si existe, o {@code Optional.empty()}.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public Optional<Intermediador> findByName(String nombre) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {

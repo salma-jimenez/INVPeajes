@@ -2,8 +2,8 @@ package com.invpeajes.service;
 
 import com.invpeajes.model.Caseta;
 import com.invpeajes.model.Peaje;
-import com.invpeajes.persistence.ICasetaDAO;
-import com.invpeajes.persistence.IPeajeDAO;
+import com.invpeajes.persistence.CasetaDAO;
+import com.invpeajes.persistence.PeajeDAO;
 import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -53,15 +53,22 @@ public class PeajeService {
     private static final int MAX_NAME_LENGTH = 60;
     private static final int MAX_BOOTH_NUMBER = 999;
 
-    private final IPeajeDAO tollDAO;
-    private final ICasetaDAO boothDAO;
+    private final PeajeDAO tollDAO;
+    private final CasetaDAO boothDAO;
 
     /**
-     * Crea el servicio con los DAO que usará.
+     * Crea el servicio con los DAO de la base de datos.
+     */
+    public PeajeService() {
+        this(new PeajeDAO(), new CasetaDAO());
+    }
+
+    /**
+     * Crea el servicio con los DAO que usará (permite usar datos falsos en pruebas).
      * @param tollDAO DAO de peajes.
      * @param boothDAO DAO de casetas.
      */
-    public PeajeService(IPeajeDAO tollDAO, ICasetaDAO boothDAO) {
+    public PeajeService(PeajeDAO tollDAO, CasetaDAO boothDAO) {
         this.tollDAO = tollDAO;
         this.boothDAO = boothDAO;
     }

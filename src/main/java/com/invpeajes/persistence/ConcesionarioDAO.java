@@ -13,12 +13,12 @@ import java.util.Optional;
 
 /**
  * Implementación JDBC del DAO de Concesionario sobre Oracle (tabla CONCESIONARIO).
- * Cumple el contrato de {@link IConcesionarioDAO}.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Concesionario.
  *
  * @author Luis Guerrero
  * @version 1.0
  */
-public class ConcesionarioDAOImpl implements IConcesionarioDAO {
+public class ConcesionarioDAO implements CrudDAO<Concesionario, Integer> {
 
     private static final String COLUMNS =
             "ID_CONCESIONARIO, NOMBRE, FECHA, NIT, TIPO_CONCESIONARIO, CORREO, TELEFONO, DIRECCION";
@@ -142,7 +142,12 @@ public class ConcesionarioDAOImpl implements IConcesionarioDAO {
         }
     }
 
-    @Override
+    /**
+     * Busca un concesionario por su nombre exacto (el nombre es único en la BD).
+     * @param nombre Nombre del concesionario.
+     * @return El concesionario si existe, o {@code Optional.empty()}.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public Optional<Concesionario> findByName(String nombre) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
@@ -157,7 +162,12 @@ public class ConcesionarioDAOImpl implements IConcesionarioDAO {
         }
     }
 
-    @Override
+    /**
+     * Lista los concesionarios de un tipo.
+     * @param tipoConcesionario INVIAS, CONCESION u OTRO.
+     * @return Concesionarios de ese tipo, ordenados por nombre.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Concesionario> findByType(String tipoConcesionario) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TYPE)) {

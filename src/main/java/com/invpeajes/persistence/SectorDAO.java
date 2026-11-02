@@ -12,12 +12,12 @@ import java.util.Optional;
 
 /**
  * Implementación JDBC del DAO de Sector sobre Oracle (tabla SECTOR).
- * Cumple el contrato de {@link ISectorDAO}.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega las consultas propias de Sector.
  *
  * @author Luis Guerrero
  * @version 1.0
  */
-public class SectorDAOImpl implements ISectorDAO {
+public class SectorDAO implements CrudDAO<Sector, Integer> {
 
     private static final String COLUMNS =
             "ID_SECTOR, NOMBRE_SECTOR, ID_MUNICIPIO_ORIGEN, ID_MUNICIPIO_DESTINO";
@@ -138,7 +138,12 @@ public class SectorDAOImpl implements ISectorDAO {
         }
     }
 
-    @Override
+    /**
+     * Busca sectores cuyo nombre contenga un texto (sin distinguir mayúsculas).
+     * @param text Texto a buscar (ej. "armenia").
+     * @return Sectores que coinciden, ordenados por nombre.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
     public List<Sector> findByNameContaining(String text) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
