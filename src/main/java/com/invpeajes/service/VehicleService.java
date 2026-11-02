@@ -1,8 +1,7 @@
 package com.invpeajes.service;
 
 import com.invpeajes.model.Vehicle;
-import com.invpeajes.persistence.IVehicleDAO;
-import com.invpeajes.persistence.VehicleDAOImpl;
+import com.invpeajes.persistence.VehicleDAO;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,14 +20,14 @@ public class VehicleService {
     private static final Pattern TRAILER_PLATE = Pattern.compile("^R\\d{5}$");
     private static final Pattern TAG_FORMAT = Pattern.compile("^[A-Z0-9-]{6,30}$");
 
-    private final IVehicleDAO vehicleDAO;
+    private final VehicleDAO vehicleDAO;
     private final VehicleCategoryService categoryService;
 
     /**
      * Crea el servicio con sus dependencias por defecto.
      */
     public VehicleService() {
-        this(new VehicleDAOImpl(), new VehicleCategoryService());
+        this(new VehicleDAO(), new VehicleCategoryService());
     }
 
     /**
@@ -37,7 +36,7 @@ public class VehicleService {
      * @param vehicleDAO DAO de vehículos
      * @param categoryService servicio para verificar categorías
      */
-    public VehicleService(IVehicleDAO vehicleDAO, VehicleCategoryService categoryService) {
+    public VehicleService(VehicleDAO vehicleDAO, VehicleCategoryService categoryService) {
         this.vehicleDAO = vehicleDAO;
         this.categoryService = categoryService;
     }

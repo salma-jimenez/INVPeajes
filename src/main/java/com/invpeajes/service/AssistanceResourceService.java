@@ -4,8 +4,7 @@ package com.invpeajes.service;
 import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceType;
 import com.invpeajes.model.ResourceAvailability;
-import com.invpeajes.persistence.AssistanceResourceDAOImpl;
-import com.invpeajes.persistence.IAssistanceResourceDAO;
+import com.invpeajes.persistence.AssistanceResourceDAO;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,16 +16,18 @@ import java.util.Optional;
  * <p>El paso a EN_SERVICIO y el regreso a DISPONIBLE los hace
  * {@link AssistanceService} al asignar y cerrar asistencias; aquí solo se
  * permite sacar un recurso de servicio o reactivarlo manualmente.</p>
+ *
+ * @author Salomejimenez
  */
 public class AssistanceResourceService {
 
     private static final int MAX_IDENTIFICATION_LENGTH = 20;
 
-    private final IAssistanceResourceDAO resourceDAO;
+    private final AssistanceResourceDAO resourceDAO;
 
     /** Crea el servicio con su DAO por defecto. */
     public AssistanceResourceService() {
-        this(new AssistanceResourceDAOImpl());
+        this(new AssistanceResourceDAO());
     }
 
     /**
@@ -34,7 +35,7 @@ public class AssistanceResourceService {
      *
      * @param resourceDAO DAO de recursos de asistencia
      */
-    public AssistanceResourceService(IAssistanceResourceDAO resourceDAO) {
+    public AssistanceResourceService(AssistanceResourceDAO resourceDAO) {
         this.resourceDAO = resourceDAO;
     }
 

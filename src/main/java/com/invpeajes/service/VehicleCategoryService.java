@@ -1,8 +1,7 @@
 
 package com.invpeajes.service;
 import com.invpeajes.model.VehicleCategory;
-import com.invpeajes.persistence.IVehicleCategoryDAO;
-import com.invpeajes.persistence.VehicleCategoryDAOImpl;
+import com.invpeajes.persistence.VehicleCategoryDAO;
 
 import java.util.List;
 
@@ -16,11 +15,11 @@ public class VehicleCategoryService {
     private static final int MIN_AXLES = 2;
     private static final int MAX_AXLES = 10;
 
-    private final IVehicleCategoryDAO categoryDAO;
+    private final VehicleCategoryDAO categoryDAO;
 
     /** Crea el servicio con su DAO por defecto. */
     public VehicleCategoryService() {
-        this(new VehicleCategoryDAOImpl());
+        this(new VehicleCategoryDAO());
     }
 
     /**
@@ -28,7 +27,7 @@ public class VehicleCategoryService {
      *
      * @param categoryDAO DAO de categorías
      */
-    public VehicleCategoryService(IVehicleCategoryDAO categoryDAO) {
+    public VehicleCategoryService(VehicleCategoryDAO categoryDAO) {
         this.categoryDAO = categoryDAO;
     }
 

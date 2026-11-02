@@ -13,9 +13,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Implementación JDBC del acceso a la tabla {@code PEAJE.RECURSO_ASISTENCIA}.
+ * Acceso a datos de la tabla {@code PEAJE.RECURSO_ASISTENCIA}.
+ *
+ * @author Salomejimenez
  */
-public class AssistanceResourceDAOImpl implements IAssistanceResourceDAO {
+public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Integer> {
 
     private static final String NEXT_ID_SQL =
             "SELECT NVL(MAX(ID_RECURSO), 0) + 1 FROM PEAJE.RECURSO_ASISTENCIA";
@@ -59,7 +61,12 @@ public class AssistanceResourceDAOImpl implements IAssistanceResourceDAO {
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
-    @Override
+    /**
+     * Busca un recurso por su identificación única (ej. placa de la grúa).
+     *
+     * @param identification identificación del recurso
+     * @return el recurso si existe
+     */
     public Optional<AssistanceResource> findByIdentification(String identification) {
         List<AssistanceResource> result = query(SELECT_SQL + "WHERE IDENTIFICACION = ?",
                 "Error al buscar el recurso " + identification, identification);
@@ -71,13 +78,25 @@ public class AssistanceResourceDAOImpl implements IAssistanceResourceDAO {
         return query(SELECT_SQL + "ORDER BY ID_PEAJE, TIPO, ID_RECURSO", "Error al listar los recursos");
     }
 
-    @Override
+    /**
+     * Lista los recursos que pertenecen a un peaje.
+     *
+     * @param tollId peaje a filtrar
+     * @return recursos del peaje
+     */
     public List<AssistanceResource> findByToll(int tollId) {
         return query(SELECT_SQL + "WHERE ID_PEAJE = ? ORDER BY TIPO, ID_RECURSO",
                 "Error al listar los recursos del peaje " + tollId, tollId);
     }
 
-    @Override
+    /**
+     * Lista los recursos disponibles de un tipo en un peaje, para asignar
+     * uno cuando llega una solicitud de asistencia.
+     *
+     * @param type   tipo de recurso requerido
+     * @param tollId peaje que atiende la solicitud
+     * @return recursos DISPONIBLES que cumplen el filtro
+     */
     public List<AssistanceResource> findAvailable(AssistanceType type, int tollId) {
         return query(SELECT_SQL + "WHERE TIPO = ? AND ID_PEAJE = ? AND DISPONIBILIDAD = ? ORDER BY ID_RECURSO",
                 "Error al buscar recursos disponibles", type.getDbValue(), tollId,
@@ -99,7 +118,13 @@ public class AssistanceResourceDAOImpl implements IAssistanceResourceDAO {
         }
     }
 
-    @Override
+    /**
+     * Cambia solo la disponibilidad de un recurso.
+     *
+     * @param resourceId   recurso a modificar
+     * @param availability nueva disponibilidad
+     * @return true si se actualizó el recurso
+     */
     public boolean updateAvailability(int resourceId, ResourceAvailability availability) {
         try (Connection con = VehicleConnectionFactory.open()) {
             return updateAvailability(con, resourceId, availability);
@@ -110,7 +135,7 @@ public class AssistanceResourceDAOImpl implements IAssistanceResourceDAO {
 
     /**
      * Cambia la disponibilidad usando una conexión ya abierta, para que
-     * participe en la transacción de {@link AssistanceDAOImpl}.
+     * participe en la transacción de {@link AssistanceDAO}.
      *
      * @param con          conexión con la transacción en curso
      * @param resourceId   recurso a modificar

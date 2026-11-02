@@ -5,10 +5,7 @@ import com.invpeajes.model.AssistanceHistory;
 import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceStatus;
 import com.invpeajes.model.ResourceAvailability;
-import com.invpeajes.persistence.AssistanceDAOImpl;
-import com.invpeajes.persistence.AssistanceHistoryDAOImpl;
-import com.invpeajes.persistence.IAssistanceDAO;
-import com.invpeajes.persistence.IAssistanceHistoryDAO;
+import com.invpeajes.persistence.AssistanceDAO;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,6 +14,8 @@ import java.util.regex.Pattern;
 /**
  * Reglas de negocio para la gestión de auxilios viales: registro,
  * asignación de recursos, avance de estados, cierre y cancelación.
+ *
+ * @author Salomejimenez
  */
 public class AssistanceService {
 
@@ -26,14 +25,13 @@ public class AssistanceService {
     private static final double MAX_LONGITUDE = -66;
     private static final Pattern PHONE_FORMAT = Pattern.compile("^\\d{7,15}$");
 
-    private final IAssistanceDAO assistanceDAO;
-    private final IAssistanceHistoryDAO historyDAO;
+    private final AssistanceDAO assistanceDAO;
     private final VehicleService vehicleService;
     private final AssistanceResourceService resourceService;
 
     /** Crea el servicio con sus dependencias por defecto. */
     public AssistanceService() {
-        this(new AssistanceDAOImpl(), new AssistanceHistoryDAOImpl(), new VehicleService(),
+        this(new AssistanceDAO(), new VehicleService(),
                 new AssistanceResourceService());
     }
 
@@ -41,14 +39,12 @@ public class AssistanceService {
      * Crea el servicio con dependencias inyectadas.
      *
      * @param assistanceDAO   DAO de asistencias
-     * @param historyDAO      DAO de historial para consultas
      * @param vehicleService  servicio para verificar placas
      * @param resourceService servicio para consultar recursos de asistencia
      */
-    public AssistanceService(IAssistanceDAO assistanceDAO, IAssistanceHistoryDAO historyDAO,
-                             VehicleService vehicleService, AssistanceResourceService resourceService) {
+    public AssistanceService(AssistanceDAO assistanceDAO, VehicleService vehicleService,
+                             AssistanceResourceService resourceService) {
         this.assistanceDAO = assistanceDAO;
-        this.historyDAO = historyDAO;
         this.vehicleService = vehicleService;
         this.resourceService = resourceService;
     }
@@ -210,7 +206,7 @@ public class AssistanceService {
      */
     public List<AssistanceHistory> getHistory(int assistanceId) {
         get(assistanceId);
-        return historyDAO.findByAssistance(assistanceId);
+        return assistanceDAO.findHistory(assistanceId);
     }
 
     /**
