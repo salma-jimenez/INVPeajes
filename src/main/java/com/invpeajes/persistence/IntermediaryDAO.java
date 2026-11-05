@@ -1,7 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.ConexionBD;
-import com.invpeajes.model.Intermediador;
+import com.invpeajes.model.Intermediary;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -17,7 +17,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class IntermediadorDAO implements CrudDAO<Intermediador, Integer> {
+public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
 
     private static final String COLUMNS = "ID_INTERMEDIADOR, NOMBRE";
 
@@ -39,42 +39,42 @@ public class IntermediadorDAO implements CrudDAO<Intermediador, Integer> {
 
     /**
      * Inserta un nuevo intermediador.
-     * @param intermediador Intermediador a guardar (el ID se envía, no lo genera Oracle).
+     * @param intermediary Intermediador a guardar (el ID se envía, no lo genera Oracle).
      * @throws DataAccessException Si falla la inserción (por ejemplo, ID o nombre repetido).
      */
     @Override
-    public void insert(Intermediador intermediador) {
+    public void insert(Intermediary intermediary) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
-            ps.setInt(1, intermediador.getIdIntermediador());
-            ps.setString(2, intermediador.getNombre());
+            ps.setInt(1, intermediary.getIntermediaryId());
+            ps.setString(2, intermediary.getName());
             ps.executeUpdate();
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo guardar el intermediador "
-                    + intermediador.getNombre(), e);
+                    + intermediary.getName(), e);
         }
     }
 
     /**
      * Busca un intermediador por su ID.
-     * @param idIntermediador ID del intermediador.
+     * @param intermediaryId ID del intermediador.
      * @return El intermediador si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Intermediador> findById(Integer idIntermediador) {
+    public Optional<Intermediary> findById(Integer intermediaryId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setInt(1, idIntermediador);
+            ps.setInt(1, intermediaryId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el intermediador " + idIntermediador, e);
+            throw new DataAccessException("No se pudo buscar el intermediador " + intermediaryId, e);
         }
     }
 
@@ -84,16 +84,16 @@ public class IntermediadorDAO implements CrudDAO<Intermediador, Integer> {
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public List<Intermediador> findAll() {
+    public List<Intermediary> findAll() {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
-            List<Intermediador> intermediadores = new ArrayList<>();
+            List<Intermediary> intermediaries = new ArrayList<>();
             while (rs.next()) {
-                intermediadores.add(mapRow(rs));
+                intermediaries.add(mapRow(rs));
             }
-            return intermediadores;
+            return intermediaries;
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar los intermediadores", e);
@@ -102,65 +102,65 @@ public class IntermediadorDAO implements CrudDAO<Intermediador, Integer> {
 
     /**
      * Actualiza el nombre de un intermediador existente.
-     * @param intermediador Intermediador con los datos nuevos.
+     * @param intermediary Intermediador con los datos nuevos.
      * @return true si se actualizó; false si no existe un intermediador con ese ID.
      * @throws DataAccessException Si falla la actualización (por ejemplo, nombre repetido).
      */
     @Override
-    public boolean update(Intermediador intermediador) {
+    public boolean update(Intermediary intermediary) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
-            ps.setString(1, intermediador.getNombre());
-            ps.setInt(2, intermediador.getIdIntermediador());
+            ps.setString(1, intermediary.getName());
+            ps.setInt(2, intermediary.getIntermediaryId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo actualizar el intermediador "
-                    + intermediador.getIdIntermediador(), e);
+                    + intermediary.getIntermediaryId(), e);
         }
     }
 
     /**
      * Elimina un intermediador por su ID.
-     * @param idIntermediador ID del intermediador.
+     * @param intermediaryId ID del intermediador.
      * @return true si se eliminó; false si no existe un intermediador con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si hay vehículos con TAG suyo).
      */
     @Override
-    public boolean delete(Integer idIntermediador) {
+    public boolean delete(Integer intermediaryId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setInt(1, idIntermediador);
+            ps.setInt(1, intermediaryId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar el intermediador " + idIntermediador, e);
+            throw new DataAccessException("No se pudo eliminar el intermediador " + intermediaryId, e);
         }
     }
 
     /**
      * Busca un intermediador por su nombre, sin distinguir mayúsculas.
-     * @param nombre Nombre del intermediador (ej. "flypass").
+     * @param name Nombre del intermediador (ej. "flypass").
      * @return El intermediador si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public Optional<Intermediador> findByName(String nombre) {
+    public Optional<Intermediary> findByName(String name) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
 
-            ps.setString(1, nombre);
+            ps.setString(1, name);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el intermediador " + nombre, e);
+            throw new DataAccessException("No se pudo buscar el intermediador " + name, e);
         }
     }
 
-    private Intermediador mapRow(ResultSet rs) throws SQLException {
-        return new Intermediador(rs.getInt("ID_INTERMEDIADOR"), rs.getString("NOMBRE"));
+    private Intermediary mapRow(ResultSet rs) throws SQLException {
+        return new Intermediary(rs.getInt("ID_INTERMEDIADOR"), rs.getString("NOMBRE"));
     }
 }

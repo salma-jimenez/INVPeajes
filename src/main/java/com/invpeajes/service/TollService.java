@@ -1,9 +1,9 @@
 package com.invpeajes.service;
 
-import com.invpeajes.model.Caseta;
-import com.invpeajes.model.Peaje;
-import com.invpeajes.persistence.CasetaDAO;
-import com.invpeajes.persistence.PeajeDAO;
+import com.invpeajes.model.TollBooth;
+import com.invpeajes.model.Toll;
+import com.invpeajes.persistence.TollBoothDAO;
+import com.invpeajes.persistence.TollDAO;
 import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -26,7 +26,7 @@ import java.util.NoSuchElementException;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class PeajeService {
+public class TollService {
 
     public static final String STATUS_OPERATIONAL = "OPERATIVO";
     public static final String BOOTH_ACTIVE = "ACTIVA";
@@ -53,14 +53,14 @@ public class PeajeService {
     private static final int MAX_NAME_LENGTH = 60;
     private static final int MAX_BOOTH_NUMBER = 999;
 
-    private final PeajeDAO tollDAO;
-    private final CasetaDAO boothDAO;
+    private final TollDAO tollDAO;
+    private final TollBoothDAO boothDAO;
 
     /**
      * Crea el servicio con los DAO de la base de datos.
      */
-    public PeajeService() {
-        this(new PeajeDAO(), new CasetaDAO());
+    public TollService() {
+        this(new TollDAO(), new TollBoothDAO());
     }
 
     /**
@@ -68,7 +68,7 @@ public class PeajeService {
      * @param tollDAO DAO de peajes.
      * @param boothDAO DAO de casetas.
      */
-    public PeajeService(PeajeDAO tollDAO, CasetaDAO boothDAO) {
+    public TollService(TollDAO tollDAO, TollBoothDAO boothDAO) {
         this.tollDAO = tollDAO;
         this.boothDAO = boothDAO;
     }
@@ -83,10 +83,10 @@ public class PeajeService {
      * @throws IllegalArgumentException Si algún dato no es válido.
      * @throws IllegalStateException Si ya existe un peaje con ese ID.
      */
-    public void registerToll(Peaje toll) {
+    public void registerToll(Toll toll) {
         validateToll(toll);
-        if (tollDAO.findById(toll.getIdPeaje()).isPresent()) {
-            throw new IllegalStateException("Ya existe un peaje con el ID " + toll.getIdPeaje());
+        if (tollDAO.findById(toll.getTollId()).isPresent()) {
+            throw new IllegalStateException("Ya existe un peaje con el ID " + toll.getTollId());
         }
         tollDAO.insert(toll);
     }
@@ -97,10 +97,10 @@ public class PeajeService {
      * @throws IllegalArgumentException Si algún dato no es válido.
      * @throws NoSuchElementException Si el peaje no existe.
      */
-    public void updateToll(Peaje toll) {
+    public void updateToll(Toll toll) {
         validateToll(toll);
         if (!tollDAO.update(toll)) {
-            throw tollNotFound(toll.getIdPeaje());
+            throw tollNotFound(toll.getTollId());
         }
     }
 
@@ -127,7 +127,7 @@ public class PeajeService {
      * @return El peaje encontrado.
      * @throws NoSuchElementException Si el peaje no existe.
      */
-    public Peaje findToll(int tollId) {
+    public Toll findToll(int tollId) {
         return tollDAO.findById(tollId).orElseThrow(() -> tollNotFound(tollId));
     }
 
@@ -135,7 +135,7 @@ public class PeajeService {
      * Lista todos los peajes.
      * @return Peajes ordenados por nombre.
      */
-    public List<Peaje> listTolls() {
+    public List<Toll> listTolls() {
         return tollDAO.findAll();
     }
 
@@ -145,7 +145,7 @@ public class PeajeService {
      * @return Peajes del departamento.
      * @throws IllegalArgumentException Si el código no tiene 2 caracteres.
      */
-    public List<Peaje> listTollsByDepartment(String departmentId) {
+    public List<Toll> listTollsByDepartment(String departmentId) {
         validateDepartment(departmentId);
         return tollDAO.findByDepartment(departmentId);
     }
@@ -156,7 +156,7 @@ public class PeajeService {
      * @return Peajes con ese estado.
      * @throws IllegalArgumentException Si el estado no es válido.
      */
-    public List<Peaje> listTollsByStatus(String status) {
+    public List<Toll> listTollsByStatus(String status) {
         validateValue("estado operativo", status, TOLL_STATUSES);
         return tollDAO.findByOperationalStatus(status);
     }
@@ -172,15 +172,15 @@ public class PeajeService {
      */
     public int changeTollStatus(int tollId, String newStatus) {
         validateValue("estado operativo", newStatus, TOLL_STATUSES);
-        Peaje toll = findToll(tollId);
-        toll.setEstadoOperativo(newStatus);
+        Toll toll = findToll(tollId);
+        toll.setOperationalStatus(newStatus);
         tollDAO.update(toll);
 
         int deactivated = 0;
         if (!STATUS_OPERATIONAL.equals(newStatus)) {
-            for (Caseta booth : boothDAO.findByToll(tollId)) {
-                if (BOOTH_ACTIVE.equals(booth.getEstado())) {
-                    boothDAO.updateStatus(booth.getIdCaseta(), BOOTH_INACTIVE);
+            for (TollBooth booth : boothDAO.findByToll(tollId)) {
+                if (BOOTH_ACTIVE.equals(booth.getStatus())) {
+                    boothDAO.updateStatus(booth.getBoothId(), BOOTH_INACTIVE);
                     deactivated++;
                 }
             }
@@ -199,10 +199,10 @@ public class PeajeService {
      * @throws IllegalStateException Si se intenta activar en un peaje no operativo.
      * @throws NoSuchElementException Si el peaje no existe.
      */
-    public void addBooth(Caseta booth) {
+    public void addBooth(TollBooth booth) {
         validateBooth(booth);
-        Peaje toll = findToll(booth.getIdPeaje());
-        validateActivation(toll, booth.getEstado());
+        Toll toll = findToll(booth.getTollId());
+        validateActivation(toll, booth.getStatus());
         boothDAO.insert(booth);
     }
 
@@ -212,7 +212,7 @@ public class PeajeService {
      * @return Casetas ordenadas por número.
      * @throws NoSuchElementException Si el peaje no existe.
      */
-    public List<Caseta> listBooths(int tollId) {
+    public List<TollBooth> listBooths(int tollId) {
         findToll(tollId);
         return boothDAO.findByToll(tollId);
     }
@@ -227,9 +227,9 @@ public class PeajeService {
      */
     public void changeBoothStatus(int boothId, String newStatus) {
         validateValue("estado de la caseta", newStatus, BOOTH_STATUSES);
-        Caseta booth = boothDAO.findById(boothId)
+        TollBooth booth = boothDAO.findById(boothId)
                 .orElseThrow(() -> new NoSuchElementException("No existe la caseta " + boothId));
-        validateActivation(findToll(booth.getIdPeaje()), newStatus);
+        validateActivation(findToll(booth.getTollId()), newStatus);
         boothDAO.updateStatus(boothId, newStatus);
     }
 
@@ -248,14 +248,14 @@ public class PeajeService {
     // Validaciones
     // ------------------------------------------------------------------
 
-    private void validateToll(Peaje toll) {
+    private void validateToll(Toll toll) {
         if (toll == null) {
             throw new IllegalArgumentException("El peaje no puede ser nulo");
         }
-        if (toll.getIdPeaje() <= 0) {
+        if (toll.getTollId() <= 0) {
             throw new IllegalArgumentException("El ID del peaje debe ser mayor que 0");
         }
-        String name = toll.getNombrePeaje();
+        String name = toll.getName();
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("El nombre del peaje es obligatorio");
         }
@@ -263,12 +263,12 @@ public class PeajeService {
             throw new IllegalArgumentException("El nombre del peaje no puede superar "
                     + MAX_NAME_LENGTH + " caracteres");
         }
-        validateLocation(toll.getLatitud(), toll.getLongitud());
-        validateDepartment(toll.getIdDepartamento());
-        validateValue("estado operativo", toll.getEstadoOperativo(), TOLL_STATUSES);
-        validateValue("nivel", toll.getNivel(), LEVELS);
-        if (toll.getSentido() != null) {
-            validateValue("sentido", toll.getSentido(), DIRECTIONS);
+        validateLocation(toll.getLatitude(), toll.getLongitude());
+        validateDepartment(toll.getDepartmentId());
+        validateValue("estado operativo", toll.getOperationalStatus(), TOLL_STATUSES);
+        validateValue("nivel", toll.getLevel(), LEVELS);
+        if (toll.getDirection() != null) {
+            validateValue("sentido", toll.getDirection(), DIRECTIONS);
         }
     }
 
@@ -291,27 +291,27 @@ public class PeajeService {
         }
     }
 
-    private void validateBooth(Caseta booth) {
+    private void validateBooth(TollBooth booth) {
         if (booth == null) {
             throw new IllegalArgumentException("La caseta no puede ser nula");
         }
-        if (booth.getNumeroCaseta() < 1 || booth.getNumeroCaseta() > MAX_BOOTH_NUMBER) {
+        if (booth.getBoothNumber() < 1 || booth.getBoothNumber() > MAX_BOOTH_NUMBER) {
             throw new IllegalArgumentException("El número de caseta debe estar entre 1 y "
                     + MAX_BOOTH_NUMBER);
         }
-        validateValue("tipo de pago", booth.getTipoPago(), PAYMENT_TYPES);
-        validateValue("estado de la caseta", booth.getEstado(), BOOTH_STATUSES);
-        if (booth.getSentido() != null) {
-            validateValue("sentido", booth.getSentido(), DIRECTIONS);
+        validateValue("tipo de pago", booth.getPaymentType(), PAYMENT_TYPES);
+        validateValue("estado de la caseta", booth.getStatus(), BOOTH_STATUSES);
+        if (booth.getDirection() != null) {
+            validateValue("sentido", booth.getDirection(), DIRECTIONS);
         }
     }
 
     /** Una caseta solo puede quedar ACTIVA si su peaje está OPERATIVO. */
-    private void validateActivation(Peaje toll, String boothStatus) {
+    private void validateActivation(Toll toll, String boothStatus) {
         if (BOOTH_ACTIVE.equals(boothStatus)
-                && !STATUS_OPERATIONAL.equals(toll.getEstadoOperativo())) {
+                && !STATUS_OPERATIONAL.equals(toll.getOperationalStatus())) {
             throw new IllegalStateException("No se puede activar una caseta del peaje "
-                    + toll.getNombrePeaje() + " porque está " + toll.getEstadoOperativo());
+                    + toll.getName() + " porque está " + toll.getOperationalStatus());
         }
     }
 

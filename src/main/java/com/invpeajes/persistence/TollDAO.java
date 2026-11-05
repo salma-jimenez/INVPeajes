@@ -1,9 +1,9 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.ConexionBD;
-import com.invpeajes.model.Peaje;
-import com.invpeajes.model.PeajeElectronico;
-import com.invpeajes.model.PeajeManual;
+import com.invpeajes.model.Toll;
+import com.invpeajes.model.ElectronicToll;
+import com.invpeajes.model.ManualToll;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -20,7 +20,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 2.0
  */
-public class PeajeDAO implements CrudDAO<Peaje, Integer> {
+public class TollDAO implements CrudDAO<Toll, Integer> {
 
     private static final String COLUMNS
             = "ID_PEAJE, CODIGO_PEAJE, ID_ANI, NOMBRE, KILOMETRO, "
@@ -61,40 +61,40 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
     /**
      * Inserta un nuevo peaje en la base de datos.
      *
-     * @param peaje Peaje a guardar.
+     * @param toll Peaje a guardar.
      * @throws DataAccessException Si falla la inserción.
      */
     @Override
-    public void insert(Peaje peaje) {
+    public void insert(Toll toll) {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
-            ps.setInt(1, peaje.getIdPeaje());
-            setFields(ps, peaje, 2);
+            ps.setInt(1, toll.getTollId());
+            setFields(ps, toll, 2);
             ps.executeUpdate();
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo guardar el peaje " + peaje.getIdPeaje(), e);
+            throw new DataAccessException("No se pudo guardar el peaje " + toll.getTollId(), e);
         }
     }
 
     /**
      * Busca un peaje por su ID.
      *
-     * @param idPeaje ID del peaje.
+     * @param tollId ID del peaje.
      * @return El peaje si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Peaje> findById(Integer idPeaje) {
+    public Optional<Toll> findById(Integer tollId) {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setInt(1, idPeaje);
+            ps.setInt(1, tollId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el peaje " + idPeaje, e);
+            throw new DataAccessException("No se pudo buscar el peaje " + tollId, e);
         }
     }
 
@@ -105,7 +105,7 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public List<Peaje> findAll() {
+    public List<Toll> findAll() {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL); ResultSet rs = ps.executeQuery()) {
 
             return mapList(rs);
@@ -118,40 +118,40 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
     /**
      * Actualiza todos los datos de un peaje existente.
      *
-     * @param peaje Peaje con los datos nuevos.
+     * @param toll Peaje con los datos nuevos.
      * @return true si se actualizó; false si no existe un peaje con ese ID.
      * @throws DataAccessException Si falla la actualización.
      */
     @Override
-    public boolean update(Peaje peaje) {
+    public boolean update(Toll toll) {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
-            setFields(ps, peaje, 1);
-            ps.setInt(20, peaje.getIdPeaje());
+            setFields(ps, toll, 1);
+            ps.setInt(20, toll.getTollId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo actualizar el peaje " + peaje.getIdPeaje(), e);
+            throw new DataAccessException("No se pudo actualizar el peaje " + toll.getTollId(), e);
         }
     }
 
     /**
      * Elimina un peaje por su ID.
      *
-     * @param idPeaje ID del peaje.
+     * @param tollId ID del peaje.
      * @return true si se eliminó; false si no existe un peaje con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si tiene
      * casetas asociadas).
      */
     @Override
-    public boolean delete(Integer idPeaje) {
+    public boolean delete(Integer tollId) {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setInt(1, idPeaje);
+            ps.setInt(1, tollId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar el peaje " + idPeaje, e);
+            throw new DataAccessException("No se pudo eliminar el peaje " + tollId, e);
         }
     }
 
@@ -160,30 +160,30 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
     // ------------------------------------------------------------------
     /**
      * Lista los peajes de un departamento.
-     * @param idDepartamento Código del departamento (2 caracteres, ej. "20").
+     * @param departmentId Código del departamento (2 caracteres, ej. "20").
      * @return Peajes del departamento, ordenados por nombre.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public List<Peaje> findByDepartment(String idDepartamento) {
-        return findByText(SQL_FIND_BY_DEPARTMENT, idDepartamento,
-                "No se pudo listar los peajes del departamento " + idDepartamento);
+    public List<Toll> findByDepartment(String departmentId) {
+        return findByText(SQL_FIND_BY_DEPARTMENT, departmentId,
+                "No se pudo listar los peajes del departamento " + departmentId);
     }
 
     /**
      * Lista los peajes según su estado operativo.
-     * @param estadoOperativo OPERATIVO, NO_OPERATIVO, SINIESTRADO o SIN_TARIFA.
+     * @param operationalStatus OPERATIVO, NO_OPERATIVO, SINIESTRADO o SIN_TARIFA.
      * @return Peajes con ese estado, ordenados por nombre.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public List<Peaje> findByOperationalStatus(String estadoOperativo) {
-        return findByText(SQL_FIND_BY_STATUS, estadoOperativo,
-                "No se pudo listar los peajes con estado " + estadoOperativo);
+    public List<Toll> findByOperationalStatus(String operationalStatus) {
+        return findByText(SQL_FIND_BY_STATUS, operationalStatus,
+                "No se pudo listar los peajes con estado " + operationalStatus);
     }
 
     // ------------------------------------------------------------------
     // Métodos de apoyo
     // ------------------------------------------------------------------
-    private List<Peaje> findByText(String sql, String value, String operation) {
+    private List<Toll> findByText(String sql, String value, String operation) {
         try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, value);
@@ -200,31 +200,31 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
      * Asigna los 19 campos que no son la llave, empezando en el índice
      * {@code start}.
      */
-    private void setFields(PreparedStatement ps, Peaje p, int start) throws SQLException {
+    private void setFields(PreparedStatement ps, Toll p, int start) throws SQLException {
         int i = start;
-        ps.setString(i++, p.getCodigoPeaje());
-        setNullableInt(ps, i++, p.getIdAni());
-        ps.setString(i++, p.getNombrePeaje());
-        ps.setString(i++, p.getKilometro());
-        ps.setDouble(i++, p.getLatitud());
-        ps.setDouble(i++, p.getLongitud());
-        ps.setString(i++, p.getUbicacionDescripcion());
-        ps.setString(i++, p.getSentido());
-        ps.setString(i++, p.getEstadoOperativo());
-        ps.setString(i++, p.getNivel());
-        ps.setString(i++, p.getAceptaColpass());
-        if (p.getFecha() != null) {
-            ps.setDate(i++, new java.sql.Date(p.getFecha().getTime()));
+        ps.setString(i++, p.getCode());
+        setNullableInt(ps, i++, p.getAniId());
+        ps.setString(i++, p.getName());
+        ps.setString(i++, p.getKilometer());
+        ps.setDouble(i++, p.getLatitude());
+        ps.setDouble(i++, p.getLongitude());
+        ps.setString(i++, p.getLocationDescription());
+        ps.setString(i++, p.getDirection());
+        ps.setString(i++, p.getOperationalStatus());
+        ps.setString(i++, p.getLevel());
+        ps.setString(i++, p.getAcceptsColpass());
+        if (p.getDate() != null) {
+            ps.setDate(i++, new java.sql.Date(p.getDate().getTime()));
         } else {
             ps.setNull(i++, Types.DATE);
         }
-        ps.setString(i++, p.getTelefono());
-        ps.setString(i++, p.getTelefonoGrua());
-        ps.setString(i++, p.getUrlFicha());
-        ps.setString(i++, p.getIdRuta());
-        setNullableInt(ps, i++, p.getIdConcesionario());
-        setNullableInt(ps, i++, p.getIdSector());
-        ps.setString(i, p.getIdDepartamento());
+        ps.setString(i++, p.getPhone());
+        ps.setString(i++, p.getTowPhone());
+        ps.setString(i++, p.getInfoSheetUrl());
+        ps.setString(i++, p.getRouteId());
+        setNullableInt(ps, i++, p.getConcessionaireId());
+        setNullableInt(ps, i++, p.getSectorId());
+        ps.setString(i, p.getDepartmentId());
     }
 
     private void setNullableInt(PreparedStatement ps, int index, Integer value) throws SQLException {
@@ -240,49 +240,49 @@ public class PeajeDAO implements CrudDAO<Peaje, Integer> {
         return rs.wasNull() ? null : value;
     }
 
-    private List<Peaje> mapList(ResultSet rs) throws SQLException {
-        List<Peaje> peajes = new ArrayList<>();
+    private List<Toll> mapList(ResultSet rs) throws SQLException {
+        List<Toll> tolls = new ArrayList<>();
         while (rs.next()) {
-            peajes.add(mapRow(rs));
+            tolls.add(mapRow(rs));
         }
-        return peajes;
+        return tolls;
     }
 
     /**
      * Convierte la fila actual en un Peaje concreto (polimorfismo): si
      * ACEPTA_COLPASS = 'S' crea un PeajeElectronico; si no, un PeajeManual.
      */
-    private Peaje mapRow(ResultSet rs) throws SQLException {
-        int idPeaje = rs.getInt("ID_PEAJE");
-        String codigoPeaje = rs.getString("CODIGO_PEAJE");
-        Integer idAni = getNullableInt(rs, "ID_ANI");
-        String nombre = rs.getString("NOMBRE");
-        String kilometro = rs.getString("KILOMETRO");
-        double latitud = rs.getDouble("LATITUD");
-        double longitud = rs.getDouble("LONGITUD");
-        String ubicacionDescripcion = rs.getString("UBICACION_DESCRIPCION");
-        String sentido = rs.getString("SENTIDO");
-        String estadoOperativo = rs.getString("ESTADO_OPERATIVO");
-        String nivel = rs.getString("NIVEL");
-        String aceptaColpass = rs.getString("ACEPTA_COLPASS");
-        java.sql.Date fecha = rs.getDate("FECHA");
-        String telefono = rs.getString("TELEFONO");
-        String telefonoGrua = rs.getString("TELEFONO_GRUA");
-        String urlFicha = rs.getString("URL_FICHA");
-        String idRuta = rs.getString("ID_RUTA");
-        Integer idConcesionario = getNullableInt(rs, "ID_CONCESIONARIO");
-        Integer idSector = getNullableInt(rs, "ID_SECTOR");
-        String idDepartamento = rs.getString("ID_DEPARTAMENTO");
+    private Toll mapRow(ResultSet rs) throws SQLException {
+        int tollId = rs.getInt("ID_PEAJE");
+        String code = rs.getString("CODIGO_PEAJE");
+        Integer aniId = getNullableInt(rs, "ID_ANI");
+        String name = rs.getString("NOMBRE");
+        String kilometer = rs.getString("KILOMETRO");
+        double latitude = rs.getDouble("LATITUD");
+        double longitude = rs.getDouble("LONGITUD");
+        String locationDescription = rs.getString("UBICACION_DESCRIPCION");
+        String direction = rs.getString("SENTIDO");
+        String operationalStatus = rs.getString("ESTADO_OPERATIVO");
+        String level = rs.getString("NIVEL");
+        String acceptsColpass = rs.getString("ACEPTA_COLPASS");
+        java.sql.Date date = rs.getDate("FECHA");
+        String phone = rs.getString("TELEFONO");
+        String towPhone = rs.getString("TELEFONO_GRUA");
+        String infoSheetUrl = rs.getString("URL_FICHA");
+        String routeId = rs.getString("ID_RUTA");
+        Integer concessionaireId = getNullableInt(rs, "ID_CONCESIONARIO");
+        Integer sectorId = getNullableInt(rs, "ID_SECTOR");
+        String departmentId = rs.getString("ID_DEPARTAMENTO");
 
-        if ("S".equals(aceptaColpass)) {
-            return new PeajeElectronico(idPeaje, codigoPeaje, idAni, nombre, kilometro,
-                    latitud, longitud, ubicacionDescripcion, sentido, estadoOperativo, nivel,
-                    fecha, telefono, telefonoGrua, urlFicha, idRuta, idConcesionario,
-                    idSector, idDepartamento);
+        if ("S".equals(acceptsColpass)) {
+            return new ElectronicToll(tollId, code, aniId, name, kilometer,
+                    latitude, longitude, locationDescription, direction, operationalStatus, level,
+                    date, phone, towPhone, infoSheetUrl, routeId, concessionaireId,
+                    sectorId, departmentId);
         }
-        return new PeajeManual(idPeaje, codigoPeaje, idAni, nombre, kilometro,
-                latitud, longitud, ubicacionDescripcion, sentido, estadoOperativo, nivel,
-                fecha, telefono, telefonoGrua, urlFicha, idRuta, idConcesionario,
-                idSector, idDepartamento);
+        return new ManualToll(tollId, code, aniId, name, kilometer,
+                latitude, longitude, locationDescription, direction, operationalStatus, level,
+                date, phone, towPhone, infoSheetUrl, routeId, concessionaireId,
+                sectorId, departmentId);
     }
 }

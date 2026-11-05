@@ -51,33 +51,33 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
-            ps.setInt(1, sector.getIdSector());
+            ps.setInt(1, sector.getSectorId());
             setFields(ps, sector, 2);
             ps.executeUpdate();
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo guardar el sector " + sector.getIdSector(), e);
+            throw new DataAccessException("No se pudo guardar el sector " + sector.getSectorId(), e);
         }
     }
 
     /**
      * Busca un sector por su ID.
-     * @param idSector ID del sector.
+     * @param sectorId ID del sector.
      * @return El sector si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Sector> findById(Integer idSector) {
+    public Optional<Sector> findById(Integer sectorId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setInt(1, idSector);
+            ps.setInt(1, sectorId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar el sector " + idSector, e);
+            throw new DataAccessException("No se pudo buscar el sector " + sectorId, e);
         }
     }
 
@@ -111,30 +111,30 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, sector, 1);
-            ps.setInt(4, sector.getIdSector());
+            ps.setInt(4, sector.getSectorId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo actualizar el sector " + sector.getIdSector(), e);
+            throw new DataAccessException("No se pudo actualizar el sector " + sector.getSectorId(), e);
         }
     }
 
     /**
      * Elimina un sector por su ID.
-     * @param idSector ID del sector.
+     * @param sectorId ID del sector.
      * @return true si se eliminó; false si no existe un sector con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si tiene peajes asociados).
      */
     @Override
-    public boolean delete(Integer idSector) {
+    public boolean delete(Integer sectorId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setInt(1, idSector);
+            ps.setInt(1, sectorId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar el sector " + idSector, e);
+            throw new DataAccessException("No se pudo eliminar el sector " + sectorId, e);
         }
     }
 
@@ -160,17 +160,17 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
 
     /** Asigna nombre, origen y destino empezando en el índice {@code start}. */
     private void setFields(PreparedStatement ps, Sector s, int start) throws SQLException {
-        ps.setString(start, s.getNombreSector());
-        ps.setString(start + 1, s.getMunicipioOrigenId());
-        ps.setString(start + 2, s.getMunicipioDestinoId());
+        ps.setString(start, s.getName());
+        ps.setString(start + 1, s.getOriginMunicipalityId());
+        ps.setString(start + 2, s.getDestinationMunicipalityId());
     }
 
     private List<Sector> mapList(ResultSet rs) throws SQLException {
-        List<Sector> sectores = new ArrayList<>();
+        List<Sector> sectors = new ArrayList<>();
         while (rs.next()) {
-            sectores.add(mapRow(rs));
+            sectors.add(mapRow(rs));
         }
-        return sectores;
+        return sectors;
     }
 
     private Sector mapRow(ResultSet rs) throws SQLException {

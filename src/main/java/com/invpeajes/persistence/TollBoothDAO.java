@@ -1,7 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.ConexionBD;
-import com.invpeajes.model.Caseta;
+import com.invpeajes.model.TollBooth;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -20,7 +20,7 @@ import java.util.Optional;
  * @author Luis Guerrero
  * @version 1.0
  */
-public class CasetaDAO implements CrudDAO<Caseta, Integer> {
+public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
 
     private static final String COLUMNS =
             "ID_CASETA, NUMERO_CASETA, TIPO_PAGO, SENTIDO, ESTADO, ID_PEAJE";
@@ -49,47 +49,47 @@ public class CasetaDAO implements CrudDAO<Caseta, Integer> {
 
     /**
      * Inserta una nueva caseta. Oracle genera el ID y se asigna al objeto.
-     * @param caseta Caseta a guardar (su ID puede ser null).
+     * @param booth Caseta a guardar (su ID puede ser null).
      * @throws DataAccessException Si falla la inserción (por ejemplo, número repetido en el mismo peaje).
      */
     @Override
-    public void insert(Caseta caseta) {
+    public void insert(TollBooth booth) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT, new String[] {"ID_CASETA"})) {
 
-            setFields(ps, caseta);
+            setFields(ps, booth);
             ps.executeUpdate();
 
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
-                    caseta.setIdCaseta(keys.getInt(1));
+                    booth.setBoothId(keys.getInt(1));
                 }
             }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo guardar la caseta "
-                    + caseta.getNumeroCaseta() + " del peaje " + caseta.getIdPeaje(), e);
+                    + booth.getBoothNumber() + " del peaje " + booth.getTollId(), e);
         }
     }
 
     /**
      * Busca una caseta por su ID.
-     * @param idCaseta ID de la caseta.
+     * @param boothId ID de la caseta.
      * @return La caseta si existe, o {@code Optional.empty()}.
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public Optional<Caseta> findById(Integer idCaseta) {
+    public Optional<TollBooth> findById(Integer boothId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
-            ps.setInt(1, idCaseta);
+            ps.setInt(1, boothId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo buscar la caseta " + idCaseta, e);
+            throw new DataAccessException("No se pudo buscar la caseta " + boothId, e);
         }
     }
 
@@ -99,7 +99,7 @@ public class CasetaDAO implements CrudDAO<Caseta, Integer> {
      * @throws DataAccessException Si falla la consulta.
      */
     @Override
-    public List<Caseta> findAll() {
+    public List<TollBooth> findAll() {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
@@ -113,102 +113,102 @@ public class CasetaDAO implements CrudDAO<Caseta, Integer> {
 
     /**
      * Actualiza todos los datos de una caseta existente.
-     * @param caseta Caseta con los datos nuevos.
+     * @param booth Caseta con los datos nuevos.
      * @return true si se actualizó; false si no existe una caseta con ese ID.
      * @throws DataAccessException Si falla la actualización.
      */
     @Override
-    public boolean update(Caseta caseta) {
+    public boolean update(TollBooth booth) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
-            setFields(ps, caseta);
-            ps.setInt(6, caseta.getIdCaseta());
+            setFields(ps, booth);
+            ps.setInt(6, booth.getBoothId());
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo actualizar la caseta " + caseta.getIdCaseta(), e);
+            throw new DataAccessException("No se pudo actualizar la caseta " + booth.getBoothId(), e);
         }
     }
 
     /**
      * Elimina una caseta por su ID.
-     * @param idCaseta ID de la caseta.
+     * @param boothId ID de la caseta.
      * @return true si se eliminó; false si no existe una caseta con ese ID.
      * @throws DataAccessException Si falla el borrado (por ejemplo, si tiene tiquetes asociados).
      */
     @Override
-    public boolean delete(Integer idCaseta) {
+    public boolean delete(Integer boothId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
-            ps.setInt(1, idCaseta);
+            ps.setInt(1, boothId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo eliminar la caseta " + idCaseta, e);
+            throw new DataAccessException("No se pudo eliminar la caseta " + boothId, e);
         }
     }
 
     /**
      * Lista las casetas de una estación de peaje.
-     * @param idPeaje ID del peaje.
+     * @param tollId ID del peaje.
      * @return Casetas del peaje, ordenadas por número.
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
-    public List<Caseta> findByToll(int idPeaje) {
+    public List<TollBooth> findByToll(int tollId) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TOLL)) {
 
-            ps.setInt(1, idPeaje);
+            ps.setInt(1, tollId);
             try (ResultSet rs = ps.executeQuery()) {
                 return mapList(rs);
             }
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo listar las casetas del peaje " + idPeaje, e);
+            throw new DataAccessException("No se pudo listar las casetas del peaje " + tollId, e);
         }
     }
 
     /**
      * Cambia solo el estado de una caseta.
-     * @param idCaseta ID de la caseta.
-     * @param estado ACTIVA, INACTIVA o MANTENIMIENTO.
+     * @param boothId ID de la caseta.
+     * @param status ACTIVA, INACTIVA o MANTENIMIENTO.
      * @return true si se actualizó; false si no existe una caseta con ese ID.
      * @throws DataAccessException Si falla la actualización.
      */
-    public boolean updateStatus(int idCaseta, String estado) {
+    public boolean updateStatus(int boothId, String status) {
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE_STATUS)) {
 
-            ps.setString(1, estado);
-            ps.setInt(2, idCaseta);
+            ps.setString(1, status);
+            ps.setInt(2, boothId);
             return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            throw new DataAccessException("No se pudo cambiar el estado de la caseta " + idCaseta, e);
+            throw new DataAccessException("No se pudo cambiar el estado de la caseta " + boothId, e);
         }
     }
 
     /** Asigna los 5 campos que no son la llave (índices 1 a 5), comunes a INSERT y UPDATE. */
-    private void setFields(PreparedStatement ps, Caseta c) throws SQLException {
-        ps.setInt(1, c.getNumeroCaseta());
-        ps.setString(2, c.getTipoPago());
-        ps.setString(3, c.getSentido());
-        ps.setString(4, c.getEstado());
-        ps.setInt(5, c.getIdPeaje());
+    private void setFields(PreparedStatement ps, TollBooth c) throws SQLException {
+        ps.setInt(1, c.getBoothNumber());
+        ps.setString(2, c.getPaymentType());
+        ps.setString(3, c.getDirection());
+        ps.setString(4, c.getStatus());
+        ps.setInt(5, c.getTollId());
     }
 
-    private List<Caseta> mapList(ResultSet rs) throws SQLException {
-        List<Caseta> casetas = new ArrayList<>();
+    private List<TollBooth> mapList(ResultSet rs) throws SQLException {
+        List<TollBooth> booths = new ArrayList<>();
         while (rs.next()) {
-            casetas.add(mapRow(rs));
+            booths.add(mapRow(rs));
         }
-        return casetas;
+        return booths;
     }
 
-    private Caseta mapRow(ResultSet rs) throws SQLException {
-        return new Caseta(
+    private TollBooth mapRow(ResultSet rs) throws SQLException {
+        return new TollBooth(
                 rs.getInt("ID_CASETA"),
                 rs.getInt("NUMERO_CASETA"),
                 rs.getString("TIPO_PAGO"),

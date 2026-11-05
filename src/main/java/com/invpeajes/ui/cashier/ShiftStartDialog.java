@@ -1,6 +1,6 @@
 package com.invpeajes.ui.cashier;
 
-import com.invpeajes.model.Caseta;
+import com.invpeajes.model.TollBooth;
 import com.invpeajes.model.CashierSession;
 import com.invpeajes.service.CashierService;
 import com.invpeajes.ui.common.Async;
@@ -35,7 +35,7 @@ public class ShiftStartDialog extends JDialog {
 
     private final CashierService service;
     private final JTextField idField = Theme.textField();
-    private final JComboBox<Caseta> boothCombo = new JComboBox<>();
+    private final JComboBox<TollBooth> boothCombo = new JComboBox<>();
     private final JLabel statusLabel = Theme.muted(" ");
     private final FlatButton verifyButton = Theme.secondaryButton("Verificar");
     private final FlatButton startButton = Theme.primaryButton("Iniciar turno");
@@ -141,7 +141,7 @@ public class ShiftStartDialog extends JDialog {
         }, data -> {
             operator = (CashierSession) data[0];
             @SuppressWarnings("unchecked")
-            List<Caseta> booths = (List<Caseta>) data[1];
+            List<TollBooth> booths = (List<TollBooth>) data[1];
             boothCombo.removeAllItems();
             booths.forEach(boothCombo::addItem);
             setBusy(false, null);
@@ -166,7 +166,7 @@ public class ShiftStartDialog extends JDialog {
 
     private void start() {
         try {
-            result = service.openShift(operator, (Caseta) boothCombo.getSelectedItem());
+            result = service.openShift(operator, (TollBooth) boothCombo.getSelectedItem());
             dispose();
         } catch (IllegalArgumentException e) {
             showError(e.getMessage());
@@ -200,10 +200,10 @@ public class ShiftStartDialog extends JDialog {
         public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                       boolean selected, boolean focused) {
             super.getListCellRendererComponent(list, value, index, selected, focused);
-            if (value instanceof Caseta) {
-                Caseta b = (Caseta) value;
-                setText("Caseta " + b.getNumeroCaseta() + " · " + b.getTipoPago()
-                        + (b.getSentido() != null ? " · " + b.getSentido() : ""));
+            if (value instanceof TollBooth) {
+                TollBooth b = (TollBooth) value;
+                setText("Caseta " + b.getBoothNumber() + " · " + b.getPaymentType()
+                        + (b.getDirection() != null ? " · " + b.getDirection() : ""));
             }
             return this;
         }
