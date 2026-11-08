@@ -10,10 +10,14 @@ import java.sql.SQLException;
  * Todas las clases DAO obtienen su conexión desde aquí.
  */
 public final class DatabaseConnection {
- 
-    private static final String URL = "jdbc:oracle:thin:@//localhost:1521/xepdb1";
+    // Carpeta del wallet (usa / aunque sea Windows)
+
+    private static final String WALLET_PATH = "C:/Users/salma/wallets/Wallet_INVPeajes";
+
+// invpeajes_tp es uno de los nombres que vienen en tnsnames.ora del wallet
+    private static final String URL = "jdbc:oracle:thin:@invpeajes_tp?TNS_ADMIN=" + WALLET_PATH;
     private static final String USER = "PEAJE";
-    private static final String PASSWORD = "PEAJEX";
+    private static final String PASSWORD = System.getenv("INVPEAJES_DB_PASSWORD");
  
     private DatabaseConnection() {
     }

@@ -17,5 +17,10 @@
         <artifactId>ojdbc11</artifactId>
         <version>21.9.0.0</version> <!-- O la versión de tu base de datos -->
     </dependency>
+    <dependency>
+    <groupId>com.oracle.database.security</groupId>
+    <artifactId>oraclepki</artifactId>
+    <version>21.9.0.0</version>
+    </dependency>
 </dependencies>
 </project>
