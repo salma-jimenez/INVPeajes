@@ -39,7 +39,7 @@ public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Intege
      */
     @Override
     public void insert(AssistanceResource resource) {
-        try (Connection con = VehicleConnectionFactory.open()) {
+        try (Connection con = DatabaseConnection.getConnection()) {
             resource.setResourceId(nextId(con));
             try (PreparedStatement ps = con.prepareStatement(INSERT_SQL)) {
                 ps.setInt(1, resource.getResourceId());
@@ -105,7 +105,7 @@ public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Intege
 
     @Override
     public boolean update(AssistanceResource resource) {
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(UPDATE_SQL)) {
             ps.setString(1, resource.getType().getDbValue());
             ps.setString(2, resource.getIdentification());
@@ -126,7 +126,7 @@ public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Intege
      * @return true si se actualizó el recurso
      */
     public boolean updateAvailability(int resourceId, ResourceAvailability availability) {
-        try (Connection con = VehicleConnectionFactory.open()) {
+        try (Connection con = DatabaseConnection.getConnection()) {
             return updateAvailability(con, resourceId, availability);
         } catch (SQLException e) {
             throw new DataAccessException("Error al cambiar la disponibilidad del recurso " + resourceId, e);
@@ -154,7 +154,7 @@ public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Intege
 
     @Override
     public boolean delete(Integer id) {
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
             ps.setInt(1, id);
             return ps.executeUpdate() > 0;
@@ -173,7 +173,7 @@ public class AssistanceResourceDAO implements CrudDAO<AssistanceResource, Intege
 
     private List<AssistanceResource> query(String sql, String errorMessage, Object... parameters) {
         List<AssistanceResource> resources = new ArrayList<>();
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
             for (int i = 0; i < parameters.length; i++) {
                 ps.setObject(i + 1, parameters[i]);

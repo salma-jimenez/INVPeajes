@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.Concessionaire;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -50,7 +49,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      */
     @Override
     public void insert(Concessionaire concessionaire) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
             ps.setInt(1, concessionaire.getConcessionaireId());
@@ -71,7 +70,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      */
     @Override
     public Optional<Concessionaire> findById(Integer concessionaireId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setInt(1, concessionaireId);
@@ -91,7 +90,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      */
     @Override
     public List<Concessionaire> findAll() {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
@@ -110,7 +109,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      */
     @Override
     public boolean update(Concessionaire concessionaire) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, concessionaire, 1);
@@ -131,7 +130,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      */
     @Override
     public boolean delete(Integer concessionaireId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setInt(1, concessionaireId);
@@ -149,7 +148,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public Optional<Concessionaire> findByName(String name) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
 
             ps.setString(1, name);
@@ -169,7 +168,7 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public List<Concessionaire> findByType(String type) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TYPE)) {
 
             ps.setString(1, type);

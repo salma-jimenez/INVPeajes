@@ -80,7 +80,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
      */
     @Override
     public void insert(Assistance assistance) {
-        try (Connection con = VehicleConnectionFactory.open()) {
+        try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try {
                 assistance.setAssistanceId(nextId(con));
@@ -149,7 +149,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
      */
     @Override
     public boolean update(Assistance assistance) {
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(UPDATE_SQL)) {
             ps.setString(1, assistance.getType().getDbValue());
             JdbcUtils.setNullableDouble(ps, 2, assistance.getIncidentLatitude());
@@ -182,7 +182,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
      */
     public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
                                 ResourceAvailability resourceAvailability) {
-        try (Connection con = VehicleConnectionFactory.open()) {
+        try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try (PreparedStatement ps = con.prepareStatement(CHANGE_STATUS_SQL)) {
                 ps.setString(1, assistance.getCurrentStatus().getDbValue());
@@ -212,7 +212,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     /** Elimina la asistencia junto con su historial en una sola transacción. */
     @Override
     public boolean delete(Integer id) {
-        try (Connection con = VehicleConnectionFactory.open()) {
+        try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try (PreparedStatement history = con.prepareStatement(HISTORY_DELETE_SQL);
                  PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
@@ -239,7 +239,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
      */
     public List<AssistanceHistory> findHistory(int assistanceId) {
         List<AssistanceHistory> history = new ArrayList<>();
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(HISTORY_FIND_SQL)) {
             ps.setInt(1, assistanceId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -300,7 +300,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
 
     private List<Assistance> query(String sql, Object parameter, String errorMessage) {
         List<Assistance> assistances = new ArrayList<>();
-        try (Connection con = VehicleConnectionFactory.open();
+        try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
             if (parameter != null) {
                 ps.setObject(1, parameter);

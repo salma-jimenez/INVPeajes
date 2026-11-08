@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.Toll;
 import com.invpeajes.model.ElectronicToll;
 import com.invpeajes.model.ManualToll;
@@ -66,7 +65,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
      */
     @Override
     public void insert(Toll toll) {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
             ps.setInt(1, toll.getTollId());
             setFields(ps, toll, 2);
@@ -86,7 +85,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
      */
     @Override
     public Optional<Toll> findById(Integer tollId) {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setInt(1, tollId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -106,7 +105,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
      */
     @Override
     public List<Toll> findAll() {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL); ResultSet rs = ps.executeQuery()) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL); ResultSet rs = ps.executeQuery()) {
 
             return mapList(rs);
 
@@ -124,7 +123,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
      */
     @Override
     public boolean update(Toll toll) {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, toll, 1);
             ps.setInt(20, toll.getTollId());
@@ -145,7 +144,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
      */
     @Override
     public boolean delete(Integer tollId) {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setInt(1, tollId);
             return ps.executeUpdate() > 0;
@@ -184,7 +183,7 @@ public class TollDAO implements CrudDAO<Toll, Integer> {
     // Métodos de apoyo
     // ------------------------------------------------------------------
     private List<Toll> findByText(String sql, String value, String operation) {
-        try (Connection conn = ConexionBD.conectar(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, value);
             try (ResultSet rs = ps.executeQuery()) {

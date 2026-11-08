@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.TollBooth;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -54,7 +53,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      */
     @Override
     public void insert(TollBooth booth) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT, new String[] {"ID_CASETA"})) {
 
             setFields(ps, booth);
@@ -80,7 +79,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      */
     @Override
     public Optional<TollBooth> findById(Integer boothId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setInt(1, boothId);
@@ -100,7 +99,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      */
     @Override
     public List<TollBooth> findAll() {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
@@ -119,7 +118,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      */
     @Override
     public boolean update(TollBooth booth) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, booth);
@@ -139,7 +138,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      */
     @Override
     public boolean delete(Integer boothId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setInt(1, boothId);
@@ -157,7 +156,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public List<TollBooth> findByToll(int tollId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_TOLL)) {
 
             ps.setInt(1, tollId);
@@ -178,7 +177,7 @@ public class TollBoothDAO implements CrudDAO<TollBooth, Integer> {
      * @throws DataAccessException Si falla la actualización.
      */
     public boolean updateStatus(int boothId, String status) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE_STATUS)) {
 
             ps.setString(1, status);

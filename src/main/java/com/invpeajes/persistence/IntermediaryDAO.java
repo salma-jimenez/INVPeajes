@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.Intermediary;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -44,7 +43,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      */
     @Override
     public void insert(Intermediary intermediary) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
             ps.setInt(1, intermediary.getIntermediaryId());
@@ -65,7 +64,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      */
     @Override
     public Optional<Intermediary> findById(Integer intermediaryId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setInt(1, intermediaryId);
@@ -85,7 +84,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      */
     @Override
     public List<Intermediary> findAll() {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
@@ -108,7 +107,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      */
     @Override
     public boolean update(Intermediary intermediary) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             ps.setString(1, intermediary.getName());
@@ -129,7 +128,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      */
     @Override
     public boolean delete(Integer intermediaryId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setInt(1, intermediaryId);
@@ -147,7 +146,7 @@ public class IntermediaryDAO implements CrudDAO<Intermediary, Integer> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public Optional<Intermediary> findByName(String name) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
 
             ps.setString(1, name);

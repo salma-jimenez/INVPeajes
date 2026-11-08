@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.Route;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -50,7 +49,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      */
     @Override
     public void insert(Route route) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
             ps.setString(1, route.getRouteId());
@@ -70,7 +69,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      */
     @Override
     public Optional<Route> findById(String routeId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setString(1, routeId);
@@ -90,7 +89,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      */
     @Override
     public List<Route> findAll() {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
@@ -109,7 +108,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      */
     @Override
     public boolean update(Route route) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, route, 1);
@@ -129,7 +128,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      */
     @Override
     public boolean delete(String routeId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setString(1, routeId);
@@ -147,7 +146,7 @@ public class RouteDAO implements CrudDAO<Route, String> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public List<Route> findByMunicipality(String municipalityId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_MUNICIPALITY)) {
 
             ps.setString(1, municipalityId);

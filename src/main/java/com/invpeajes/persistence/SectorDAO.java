@@ -1,6 +1,5 @@
 package com.invpeajes.persistence;
 
-import com.invpeajes.ConexionBD;
 import com.invpeajes.model.Sector;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -48,7 +47,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      */
     @Override
     public void insert(Sector sector) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_INSERT)) {
 
             ps.setInt(1, sector.getSectorId());
@@ -68,7 +67,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      */
     @Override
     public Optional<Sector> findById(Integer sectorId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_ID)) {
 
             ps.setInt(1, sectorId);
@@ -88,7 +87,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      */
     @Override
     public List<Sector> findAll() {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
              ResultSet rs = ps.executeQuery()) {
 
@@ -107,7 +106,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      */
     @Override
     public boolean update(Sector sector) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE)) {
 
             setFields(ps, sector, 1);
@@ -127,7 +126,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      */
     @Override
     public boolean delete(Integer sectorId) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_DELETE)) {
 
             ps.setInt(1, sectorId);
@@ -145,7 +144,7 @@ public class SectorDAO implements CrudDAO<Sector, Integer> {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     public List<Sector> findByNameContaining(String text) {
-        try (Connection conn = ConexionBD.conectar();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FIND_BY_NAME)) {
 
             ps.setString(1, "%" + text + "%");

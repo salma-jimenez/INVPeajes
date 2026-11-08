@@ -39,7 +39,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
 
     @Override
     public void insert(Vehicle vehicle) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(INSERT_SQL)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(INSERT_SQL)) {
             ps.setString(1, vehicle.getPlate());
             ps.setString(2, vehicle.getType());
             ps.setString(3, vehicle.getBrand());
@@ -69,7 +69,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
 
     @Override
     public List<Vehicle> findAll() {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(FIND_ALL_SQL); ResultSet rs = ps.executeQuery()) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(FIND_ALL_SQL); ResultSet rs = ps.executeQuery()) {
             return mapRows(rs);
         } catch (SQLException e) {
             throw new DataAccessException("Error al listar los vehículos", e);
@@ -83,7 +83,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
      * @return vehículos de esa categoría
      */
     public List<Vehicle> findByCategory(int categoryId) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(FIND_BY_CATEGORY_SQL)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(FIND_BY_CATEGORY_SQL)) {
             ps.setInt(1, categoryId);
             try (ResultSet rs = ps.executeQuery()) {
                 return mapRows(rs);
@@ -95,7 +95,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
 
     @Override
     public boolean update(Vehicle vehicle) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(UPDATE_SQL)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(UPDATE_SQL)) {
             ps.setString(1, vehicle.getType());
             ps.setString(2, vehicle.getBrand());
             ps.setString(3, vehicle.getTagCode());
@@ -117,7 +117,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
      * @return true si se actualizó el vehículo
      */
     public boolean updateTag(String plate, String tagCode, Integer intermediaryId) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(UPDATE_TAG_SQL)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(UPDATE_TAG_SQL)) {
             ps.setString(1, tagCode);
             JdbcUtils.setNullableInt(ps, 2, intermediaryId);
             ps.setString(3, plate);
@@ -129,7 +129,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
 
     @Override
     public boolean delete(String plate) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
             ps.setString(1, plate);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -138,7 +138,7 @@ public class VehicleDAO implements CrudDAO<Vehicle, String> {
     }
 
     private Optional<Vehicle> findOne(String sql, String value, String errorMessage) {
-        try (Connection con = VehicleConnectionFactory.open(); PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setString(1, value);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
