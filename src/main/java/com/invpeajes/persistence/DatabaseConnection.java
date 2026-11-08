@@ -12,7 +12,7 @@ import java.sql.SQLException;
 public final class DatabaseConnection {
     // Carpeta del wallet (usa / aunque sea Windows)
 
-    private static final String WALLET_PATH = "C:/Users/salma/wallets/Wallet_INVPeajes";
+    private static final String WALLET_PATH = "C:/Oracle/Wallet_INVPeajes";
 
 // invpeajes_tp es uno de los nombres que vienen en tnsnames.ora del wallet
     private static final String URL = "jdbc:oracle:thin:@invpeajes_tp?TNS_ADMIN=" + WALLET_PATH;
