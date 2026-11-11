@@ -11,7 +11,6 @@ import com.invpeajes.service.CashierService;
 import com.invpeajes.service.StationManagerService;
 import com.invpeajes.ui.cashier.CashierFrame;
 import com.invpeajes.ui.common.Async;
-import com.invpeajes.ui.common.FlatButton;
 import com.invpeajes.ui.common.Theme;
 import com.invpeajes.ui.station.StationFrame;
 import com.invpeajes.ui.station.StationTexts;
@@ -24,20 +23,25 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.RenderingHints;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.font.TextAttribute;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
+import java.util.Map;
 import java.util.prefs.Preferences;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -47,27 +51,35 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.WindowConstants;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.plaf.basic.BasicButtonUI;
+import javax.swing.plaf.basic.BasicComboBoxUI;
+import javax.swing.text.JTextComponent;
+import javax.swing.text.View;
 
 /**
- * Ventana de inicio de RutaPeaje. A la izquierda la franja azul ilustrada ({@link BrandPanel}) y a
- * la derecha los pasos del inicio de sesión:
+ * Ventana de inicio de RutaPeaje. A la izquierda va la columna blanca con el formulario de cada
+ * paso y a la derecha el panel ilustrado del peaje ({@link BrandPanel}).
  *
  * <ul>
  *   <li><b>Bienvenida</b>: "Soy viajero" o "Soy empleado", y el enlace para entrar como invitado.</li>
  *   <li><b>Empleados</b>: cédula y contraseña. Según el cargo, el operador de caseta escoge su caseta
  *       y abre la Caja; el jefe de estación ve el resumen de su peaje y entra a su panel; el
  *       administrador ve su saludo (su panel está en construcción).</li>
- *   <li><b>Viajeros</b>: iniciar sesión, crear cuenta, entrar como invitado y consultar una
- *       solicitud de asistencia con su número y teléfono.</li>
+ *   <li><b>Viajeros</b>: iniciar sesión y crear cuenta en pestañas.</li>
+ *   <li><b>Invitado</b>: entrar sin cuenta y consultar una solicitud de asistencia con su número y
+ *       teléfono.</li>
  * </ul>
  *
  * @author Salomejimenez
- * @version 1.0
+ * @version 2.0
  */
 public class LoginFrame extends JFrame {
 
@@ -81,7 +93,18 @@ public class LoginFrame extends JFrame {
     private static final String LOGIN_TAB = "login";
     private static final String REGISTER_TAB = "register";
     private static final String PREF_EMPLOYEE_ID = "employeeId";
-    private static final int CARD_WIDTH = 440;
+
+    /** Ancho del formulario dentro de la columna izquierda. */
+    private static final int FORM_WIDTH = 384;
+    private static final int COLUMN_WIDTH = 560;
+
+    private static final Color NAVY = new Color(0x0F2A5F);
+    private static final Color INK = new Color(0x18181B);
+    private static final Color BODY = new Color(0x52525B);
+    private static final Color LABEL = new Color(0x71717A);
+    private static final Color LINE = new Color(0xD4D4D8);
+    private static final Color SOFT_LINE = new Color(0xE4E4E7);
+    private static final Color ARROW = new Color(0xA1A1AA);
 
     private final AuthService auth;
     private final CashierService cashier;
@@ -90,25 +113,28 @@ public class LoginFrame extends JFrame {
 
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
+    private final JLabel topBack = muted("← Volver");
     private CashierSession employee;
 
-    private final JTextField employeeId = Theme.textField();
+    private final JTextField employeeId = textField();
     private final JPasswordField employeePassword = passwordField();
+    private final Field employeeIdField = new Field("Cédula", employeeId);
+    private final Field employeePasswordField = new Field("Contraseña", employeePassword, toggle(employeePassword));
     private final JCheckBox rememberId = checkBox("Recordar mi cédula");
     private final JLabel employeeError = errorLabel();
-    private final FlatButton employeeButton = wide(Theme.primaryButton("Ingresar"));
+    private final PillButton employeeButton = new PillButton("Ingresar", PillButton.PRIMARY);
 
-    private final JLabel boothHello = h2("");
-    private final JLabel boothRole = sub("");
+    private final JLabel boothHello = h1("", 30);
+    private final WrapText boothRole = lead("");
     private final JComboBox<TollBooth> boothCombo = new JComboBox<>();
     private final JLabel boothError = errorLabel();
-    private final FlatButton boothButton = wide(green(Theme.primaryButton("Iniciar turno")));
+    private final PillButton boothButton = new PillButton("Iniciar turno", PillButton.SUCCESS);
 
-    private final JLabel greetHello = h2("");
-    private final JLabel greetRole = sub("");
+    private final JLabel greetHello = h1("", 30);
+    private final WrapText greetRole = lead("");
     private final JPanel greetBody = new JPanel(new BorderLayout());
-    private final FlatButton greetButton = wide(Theme.primaryButton("Ir al Centro de asistencia"));
-    private final JLabel greetNote = sub("");
+    private final PillButton greetButton = new PillButton("Ir al Centro de asistencia", PillButton.PRIMARY);
+    private final WrapText greetNote = note("");
 
     private final CardLayout travelerTabs = new CardLayout();
     private final JPanel travelerTabPanel = new JPanel(travelerTabs) {
@@ -123,26 +149,43 @@ public class LoginFrame extends JFrame {
         }
     };
     private final JLabel loginTab = tab("Iniciar sesión");
-    private final JLabel registerTab = tab("Registrarme");
-    private final JTextField travelerEmail = Theme.textField();
+    private final JLabel registerTab = tab("Crear cuenta");
+    private final WrapText travelerNote = note("Como invitado puedes ver peajes y tarifas y pedir asistencia.\n"
+            + "Con cuenta guardas tus placas y ves todas tus solicitudes.");
+    private final JTextField travelerEmail = textField();
     private final JPasswordField travelerPassword = passwordField();
+    private final Field travelerEmailField = new Field("Correo", travelerEmail);
+    private final Field travelerPasswordField = new Field("Contraseña", travelerPassword, toggle(travelerPassword));
     private final JLabel travelerError = errorLabel();
-    private final FlatButton travelerButton = wide(Theme.primaryButton("Iniciar sesión"));
-    private final JTextField regFirst = Theme.textField();
-    private final JTextField regLast = Theme.textField();
-    private final JTextField regEmail = Theme.textField();
-    private final JTextField regPhone = Theme.textField();
+    private final PillButton travelerButton = new PillButton("Iniciar sesión", PillButton.PRIMARY);
+
+    private final JTextField regFirst = textField();
+    private final JTextField regLast = textField();
+    private final JTextField regEmail = textField();
+    private final JTextField regPhone = textField();
+    private final JTextField regPlate = textField();
     private final JPasswordField regPassword = passwordField();
     private final JPasswordField regConfirm = passwordField();
-    private final JTextField regPlate = Theme.textField();
+    private final Field[] regFields = {
+        new Field("Correo", regEmail),
+        new Field("Teléfono", regPhone),
+        new Field("Placa (opcional)", regPlate).key("placa"),
+        new Field("Confirmar", regConfirm).key("coinciden"),
+        new Field("Contraseña", regPassword),
+        new Field("Nombre", regFirst),
+        new Field("Apellido", regLast),
+    };
+    private final JCheckBox regTerms = checkBox("Acepto los ");
     private final JLabel regError = errorLabel();
-    private final FlatButton regButton = wide(Theme.primaryButton("Crear cuenta"));
+    private final PillButton regButton = new PillButton("Crear cuenta", PillButton.PRIMARY);
 
-    private final JTextField trackNumber = Theme.textField();
-    private final JTextField trackPhone = Theme.textField();
+    private final JTextField trackNumber = textField();
+    private final JTextField trackPhone = textField();
+    private final Field trackNumberField = new Field("N.º de solicitud", trackNumber).key("número");
+    private final Field trackPhoneField = new Field("Teléfono", trackPhone);
     private final JLabel trackError = errorLabel();
-    private final FlatButton trackButton = wide(Theme.primaryButton("Consultar"));
     private final JPanel trackResult = new JPanel(new BorderLayout(0, 6));
+    private final PillButton guestButton = new PillButton("Continuar como invitado", PillButton.PRIMARY);
 
     /**
      * Crea la ventana con los servicios indicados.
@@ -156,22 +199,29 @@ public class LoginFrame extends JFrame {
         this.cashier = cashier;
         this.station = station;
 
-        content.setBackground(Theme.BACKGROUND);
-        content.add(center(buildWelcome()), WELCOME);
-        content.add(center(buildEmployee()), EMPLOYEE);
-        content.add(center(buildBooth()), BOOTH);
-        content.add(center(buildGreeting()), GREETING);
-        content.add(center(buildTraveler()), TRAVELER);
-        content.add(center(buildGuest()), GUEST);
-        content.add(center(buildTrack()), TRACK);
+        content.setOpaque(false);
+        content.add(buildWelcome(), WELCOME);
+        content.add(buildEmployee(), EMPLOYEE);
+        content.add(buildBooth(), BOOTH);
+        content.add(buildGreeting(), GREETING);
+        content.add(buildTraveler(), TRAVELER);
+        content.add(buildGuest(), GUEST);
+
+        JPanel column = new JPanel(new BorderLayout(0, 0));
+        column.setBackground(Color.WHITE);
+        column.setBorder(BorderFactory.createEmptyBorder(56, 88, 36, 88));
+        column.setPreferredSize(new Dimension(COLUMN_WIDTH, 768));
+        column.add(buildLogoRow(), BorderLayout.NORTH);
+        column.add(content, BorderLayout.CENTER);
 
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(new BrandPanel(), BorderLayout.WEST);
-        getContentPane().add(content, BorderLayout.CENTER);
+        getContentPane().setBackground(Color.WHITE);
+        getContentPane().add(column, BorderLayout.WEST);
+        getContentPane().add(new BrandPanel(), BorderLayout.CENTER);
         show(WELCOME);
 
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(1100, 680));
+        setMinimumSize(new Dimension(1100, 720));
         setSize(1366, 768);
         setLocationRelativeTo(null);
     }
@@ -196,11 +246,13 @@ public class LoginFrame extends JFrame {
 
     /**
      * Muestra un paso del inicio de sesión.
-     * @param card Nombre del paso.
+     * @param card Nombre del paso. "track" abre el paso de invitado en la consulta de la solicitud.
      */
     private void show(String card) {
-        cards.show(content, card);
-        switch (card) {
+        String target = TRACK.equals(card) ? GUEST : card;
+        cards.show(content, target);
+        topBack.setVisible(TRAVELER.equals(target));
+        switch (target) {
             case EMPLOYEE:
                 getRootPane().setDefaultButton(employeeButton);
                 SwingUtilities.invokeLater(() -> (employeeId.getText().isEmpty() ? employeeId : employeePassword)
@@ -213,10 +265,13 @@ public class LoginFrame extends JFrame {
                 getRootPane().setDefaultButton(greetButton);
                 break;
             case TRAVELER:
-                getRootPane().setDefaultButton(travelerButton);
+                getRootPane().setDefaultButton(LOGIN_TAB.equals(currentTab()) ? travelerButton : regButton);
                 break;
-            case TRACK:
-                getRootPane().setDefaultButton(trackButton);
+            case GUEST:
+                getRootPane().setDefaultButton(guestButton);
+                if (TRACK.equals(card)) {
+                    SwingUtilities.invokeLater(trackNumber::requestFocusInWindow);
+                }
                 break;
             default:
                 getRootPane().setDefaultButton(null);
@@ -224,83 +279,62 @@ public class LoginFrame extends JFrame {
         }
     }
 
+    private JComponent buildLogoRow() {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setOpaque(false);
+        JPanel logo = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        logo.setOpaque(false);
+        logo.add(new LogoMark());
+        logo.add(Box.createHorizontalStrut(10));
+        JLabel name = new JLabel("RutaPeaje");
+        name.setFont(Theme.font(Font.BOLD, 18));
+        name.setForeground(NAVY);
+        logo.add(name);
+        logo.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        logo.addMouseListener(click(() -> show(WELCOME)));
+        row.add(logo, BorderLayout.WEST);
+        topBack.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        topBack.addMouseListener(click(() -> show(WELCOME)));
+        row.add(topBack, BorderLayout.EAST);
+        return row;
+    }
+
     // ------------------------------------------------------------------ Bienvenida
 
     private JComponent buildWelcome() {
-        JPanel panel = column();
-        panel.setOpaque(false);
-        JLabel title = new JLabel("¡Bienvenido!");
-        title.setFont(Theme.font(Font.BOLD, 26));
-        title.setForeground(Theme.TEXT);
-        panel.add(left(title));
-        panel.add(left(sub("¿Cómo quieres entrar?")));
-        panel.add(Box.createVerticalStrut(24));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(56));
+        top.add(left(h1("<html>Todos los peajes<br>de Colombia, en un<br>solo lugar.</html>", 34)));
+        top.add(Box.createVerticalStrut(14));
+        top.add(left(lead("Consulta tarifas y rutas, pide asistencia en la vía o ingresa a la "
+                + "operación de tu peaje.")));
+        top.add(Box.createVerticalStrut(28));
+        top.add(left(new OptionRow(OptionRow.CAR, "Soy viajero", "Peajes, tarifas, rutas y asistencia en la vía",
+                () -> {
+                    selectTravelerTab(LOGIN_TAB);
+                    show(TRAVELER);
+                })));
+        top.add(Box.createVerticalStrut(10));
+        top.add(left(new OptionRow(OptionRow.BADGE, "Soy empleado", "Caja de cobro y gestión del peaje",
+                () -> show(EMPLOYEE))));
 
-        JPanel choices = new JPanel(new GridLayout(1, 2, 22, 0));
-        choices.setOpaque(false);
-        FlatButton traveler = wide(Theme.primaryButton("Entrar como viajero"));
-        traveler.addActionListener(e -> {
-            selectTravelerTab(LOGIN_TAB);
-            show(TRAVELER);
-        });
-        FlatButton staff = wide(Theme.secondaryButton("Entrar como empleado"));
-        staff.addActionListener(e -> show(EMPLOYEE));
-        choices.add(choice(Icon.CAR, Theme.PRIMARY, "Soy viajero", "Para quien va por la vía",
-                new String[]{"Peajes, tarifas y mapa", "Costo de una ruta", "Pedir asistencia y ver su estado"},
-                traveler, true));
-        choices.add(choice(Icon.BADGE, Theme.SIDEBAR, "Soy empleado", "Cajeros, jefes de estación y administración",
-                new String[]{"Caja de cobro (operador de caseta)", "Centro de asistencia y recursos",
-                    "Estadísticas y administración"}, staff, false));
-        panel.add(left(choices));
-        panel.add(Box.createVerticalStrut(22));
-
-        JPanel guest = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        guest.setOpaque(false);
-        guest.add(sub("¿No quieres crear cuenta? Puedes "));
-        guest.add(link("entrar como invitado", () -> show(GUEST)));
-        guest.add(sub("."));
-        guest.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-        panel.add(left(guest));
-        return panel;
-    }
-
-    private JPanel choice(Icon icon, Color color, String title, String subtitle, String[] items,
-                          FlatButton button, boolean highlighted) {
-        JPanel card = new RoundedCard(highlighted ? Theme.PRIMARY : Theme.BORDER, highlighted ? 2 : 1);
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createEmptyBorder(26, 26, 26, 26));
-        card.setPreferredSize(new Dimension(330, 320));
-        card.add(left(new IconBox(icon, color)));
-        card.add(Box.createVerticalStrut(16));
-        JLabel name = new JLabel(title);
-        name.setFont(Theme.font(Font.BOLD, 21));
-        name.setForeground(Theme.TEXT);
-        card.add(left(name));
-        card.add(left(sub(subtitle)));
-        card.add(Box.createVerticalStrut(8));
-        for (String item : items) {
-            JLabel line = new JLabel("<html><span style='color:#16A34A'>✓</span>&nbsp; " + item + "</html>");
-            line.setFont(Theme.font(Font.PLAIN, 14));
-            line.setForeground(Theme.TEXT);
-            line.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
-            card.add(left(line));
-        }
-        card.add(Box.createVerticalGlue());
-        card.add(Box.createVerticalStrut(16));
-        card.add(left(button));
-        return card;
+        JPanel bottom = flow();
+        bottom.add(small("¿Solo quieres consultar? "));
+        bottom.add(link("Entrar como invitado", () -> show(GUEST)));
+        return page(top, bottom);
     }
 
     // ------------------------------------------------------------------ Empleados
 
     private JComponent buildEmployee() {
-        JPanel card = formCard();
-        card.add(left(back(() -> show(WELCOME))));
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(h2("Ingreso de empleados")));
-        card.add(left(sub("El sistema te lleva a tu pantalla según tu cargo.")));
-        addField(card, "Cédula", employeeId);
-        addField(card, "Contraseña", withToggle(employeePassword));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(56));
+        top.add(left(h1("Ingreso de empleados", 34)));
+        top.add(Box.createVerticalStrut(14));
+        top.add(left(lead("Te llevamos a la caja o al panel del peaje según tu cargo.")));
+        top.add(Box.createVerticalStrut(8));
+        addField(top, employeeIdField, 22);
+        addField(top, employeePasswordField, 22);
 
         JPanel row = new JPanel(new BorderLayout());
         row.setOpaque(false);
@@ -308,27 +342,25 @@ public class LoginFrame extends JFrame {
         row.add(link("¿Olvidaste tu contraseña?", () -> JOptionPane.showMessageDialog(this,
                 "Pídele al jefe de estación de tu peaje o al administrador que restablezca tu contraseña.",
                 "Recuperar contraseña", JOptionPane.INFORMATION_MESSAGE)), BorderLayout.EAST);
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(row));
-        card.add(left(employeeError));
-        card.add(Box.createVerticalStrut(10));
-        card.add(left(employeeButton));
-        card.add(Box.createVerticalStrut(18));
-        card.add(left(hint("<b>Operador de caseta</b> → elige su caseta y abre la Caja.<br>"
-                + "<b>Jefe de estación</b> → Centro de asistencia, Recursos y Estadísticas.<br>"
-                + "<b>Administrador</b> → peajes, tarifas, casetas y empleados.")));
+        top.add(Box.createVerticalStrut(14));
+        top.add(stretch(row));
+        top.add(left(employeeError));
+        top.add(Box.createVerticalStrut(18));
+        top.add(left(actions(employeeButton, "← Volver", () -> show(WELCOME))));
 
         String saved = prefs.get(PREF_EMPLOYEE_ID, "");
         employeeId.setText(saved);
         rememberId.setSelected(!saved.isEmpty());
         employeeButton.addActionListener(e -> employeeLogin());
-        return card;
+        return page(top, note("Operador de caseta → escoge su caseta y abre la Caja.\n"
+                + "Jefe de estación y administrador → entran a su panel."));
     }
 
     private void employeeLogin() {
         String id = employeeId.getText().trim();
         char[] password = employeePassword.getPassword();
         employeeError.setText(" ");
+        clear(employeeIdField, employeePasswordField);
         employeeButton.setEnabled(false);
         employeeButton.setText("Verificando...");
         Async.run(() -> auth.employeeLogin(id, password), session -> {
@@ -350,7 +382,9 @@ public class LoginFrame extends JFrame {
             employeeButton.setEnabled(true);
             employeeButton.setText("Ingresar");
             employeePassword.setText("");
-            employeeError.setText(error.getMessage());
+            if (!flag(error.getMessage(), employeePasswordField, employeeIdField)) {
+                employeePasswordField.setError(error.getMessage());
+            }
             employeePassword.requestFocusInWindow();
         });
     }
@@ -358,13 +392,22 @@ public class LoginFrame extends JFrame {
     // ------------------------------------------------------------------ Operador: caseta del turno
 
     private JComponent buildBooth() {
-        JPanel card = formCard();
-        card.add(left(back(() -> show(EMPLOYEE))));
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(boothHello));
-        card.add(left(boothRole));
-        boothCombo.setFont(Theme.font(Font.PLAIN, 15));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(56));
+        top.add(left(new Badge()));
+        top.add(Box.createVerticalStrut(18));
+        top.add(left(boothHello));
+        top.add(Box.createVerticalStrut(8));
+        top.add(left(boothRole));
+        top.add(Box.createVerticalStrut(18));
+        top.add(left(lead("Escoge la caseta donde vas a trabajar hoy para abrir tu turno.")));
+
+        boothCombo.setFont(Theme.font(Font.PLAIN, 16));
+        boothCombo.setForeground(INK);
         boothCombo.setBackground(Color.WHITE);
+        boothCombo.setBorder(BorderFactory.createEmptyBorder());
+        boothCombo.setOpaque(false);
+        boothCombo.setUI(new FlatComboUI());
         boothCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index,
@@ -373,18 +416,19 @@ public class LoginFrame extends JFrame {
                 if (value instanceof TollBooth) {
                     setText(boothText((TollBooth) value));
                 }
-                setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+                setBorder(BorderFactory.createEmptyBorder(6, 4, 6, 8));
                 return this;
             }
         });
-        addField(card, "Caseta del turno", boothCombo);
-        card.add(left(boothError));
-        card.add(Box.createVerticalStrut(10));
-        card.add(left(boothButton));
-        card.add(Box.createVerticalStrut(14));
-        card.add(left(sub("Solo aparecen las casetas activas de tu peaje.")));
+        addField(top, new Field("Caseta del turno", boothCombo), 22);
+        top.add(left(boothError));
+        top.add(Box.createVerticalStrut(18));
+        top.add(left(actions(boothButton, "← No soy yo", () -> {
+            employee = null;
+            show(EMPLOYEE);
+        })));
         boothButton.addActionListener(e -> startShift());
-        return card;
+        return page(top, note("Solo aparecen las casetas activas de tu peaje."));
     }
 
     private void openBoothStep(CashierSession session) {
@@ -419,37 +463,28 @@ public class LoginFrame extends JFrame {
     // ------------------------------------------------------------------ Jefe y administrador: saludo
 
     private JComponent buildGreeting() {
-        JPanel card = formCard();
-        card.add(centered(new CheckBadge()));
-        card.add(Box.createVerticalStrut(16));
-        greetHello.setHorizontalAlignment(SwingConstants.CENTER);
-        greetRole.setHorizontalAlignment(SwingConstants.CENTER);
-        card.add(stretch(greetHello));
-        card.add(stretch(greetRole));
-        card.add(Box.createVerticalStrut(20));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(56));
+        top.add(left(new Badge()));
+        top.add(Box.createVerticalStrut(18));
+        top.add(left(greetHello));
+        top.add(Box.createVerticalStrut(8));
+        top.add(left(greetRole));
+        top.add(Box.createVerticalStrut(26));
         greetBody.setOpaque(false);
-        card.add(left(greetBody));
-        card.add(Box.createVerticalStrut(18));
-        card.add(left(greetButton));
-        card.add(Box.createVerticalStrut(10));
-        greetNote.setHorizontalAlignment(SwingConstants.CENTER);
-        greetNote.setFont(Theme.font(Font.PLAIN, 12));
-        card.add(stretch(greetNote));
-        card.add(Box.createVerticalStrut(6));
-        JPanel out = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        out.setOpaque(false);
-        out.add(link("No soy yo, volver", () -> {
+        top.add(stretch(greetBody));
+        top.add(Box.createVerticalStrut(28));
+        top.add(left(actions(greetButton, "← No soy yo", () -> {
             employee = null;
             show(EMPLOYEE);
-        }));
-        card.add(left(out));
+        })));
         greetButton.addActionListener(e -> {
             if (employee != null && AuthService.ROLE_MANAGER.equals(employee.getRole())) {
                 dispose();
                 new StationFrame(station, employee).setVisible(true);
             }
         });
-        return card;
+        return page(top, greetNote);
     }
 
     private void openGreeting(CashierSession session) {
@@ -458,29 +493,31 @@ public class LoginFrame extends JFrame {
         boolean admin = AuthService.ROLE_ADMIN.equals(session.getRole());
         if (admin) {
             greetRole.setText("Administrador · Todos los peajes");
-            greetBody.add(hint("Desde Administración se registran, modifican y eliminan <b>peajes</b>, "
-                    + "<b>tarifas</b>, <b>casetas</b> y <b>empleados</b>."), BorderLayout.CENTER);
+            JPanel list = column();
+            list.add(left(overline("DESDE ADMINISTRACIÓN GESTIONAS")));
+            list.add(Box.createVerticalStrut(6));
+            for (String item : new String[]{"Peajes", "Tarifas por categoría", "Casetas", "Empleados"}) {
+                list.add(stretch(summaryRow(item, valueLabel("Registrar · modificar · eliminar", LABEL, false))));
+            }
+            greetBody.add(list, BorderLayout.CENTER);
             greetButton.setText("Ir a Administración");
             greetButton.setEnabled(false);
             greetNote.setText("El panel de Administración está en construcción.");
         } else {
             greetRole.setText("Jefe de estación · Peaje " + session.getTollName());
-            JLabel unattended = value("…", Theme.DANGER);
-            JLabel resources = value("…", Theme.WARNING);
-            JLabel revenue = value("…", Theme.SUCCESS);
-            JPanel box = new RoundedCard(Theme.BORDER, 1);
-            box.setLayout(new GridLayout(3, 2, 0, 8));
-            box.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
-            box.add(plain("Solicitudes sin atender"));
-            box.add(unattended);
-            box.add(plain("Recursos disponibles"));
-            box.add(resources);
-            box.add(plain("Recaudado hoy"));
-            box.add(revenue);
-            greetBody.add(box, BorderLayout.CENTER);
+            JLabel unattended = valueLabel("…", Theme.DANGER, true);
+            JLabel resources = valueLabel("…", Theme.WARNING, true);
+            JLabel revenue = valueLabel("…", Theme.SUCCESS, true);
+            JPanel list = column();
+            list.add(left(overline("HOY EN TU PEAJE")));
+            list.add(Box.createVerticalStrut(6));
+            list.add(stretch(summaryRow("Solicitudes sin atender", unattended)));
+            list.add(stretch(summaryRow("Recursos disponibles", resources)));
+            list.add(stretch(summaryRow("Recaudado hoy", revenue)));
+            greetBody.add(list, BorderLayout.CENTER);
             greetButton.setText("Ir al Centro de asistencia");
             greetButton.setEnabled(true);
-            greetNote.setText("Los jefes no escogen caseta: entran directo a su panel.");
+            greetNote.setText("Los jefes de estación no escogen caseta: entran directo a su panel.");
             Async.run(() -> station.summary(session.getTollId()), s -> {
                 unattended.setText(String.valueOf(s.getUnattended()));
                 resources.setText(s.getAvailableResources() + " de " + s.getTotalResources());
@@ -492,70 +529,89 @@ public class LoginFrame extends JFrame {
             });
         }
         greetBody.revalidate();
+        greetBody.repaint();
         show(GREETING);
     }
 
-    // ------------------------------------------------------------------ Viajero: iniciar sesión y registro
+    // ------------------------------------------------------------------ Viajero: iniciar sesión y crear cuenta
 
     private JComponent buildTraveler() {
-        JPanel card = formCard();
-        card.add(left(back(() -> show(WELCOME))));
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(h2("Viajero")));
-        card.add(Box.createVerticalStrut(12));
-
-        JPanel tabs = new JPanel(new GridLayout(1, 2));
-        tabs.setOpaque(false);
-        tabs.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.BORDER));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(34));
+        JPanel tabs = new TabBar();
         tabs.add(loginTab);
+        tabs.add(Box.createHorizontalStrut(28));
         tabs.add(registerTab);
         loginTab.addMouseListener(click(() -> selectTravelerTab(LOGIN_TAB)));
         registerTab.addMouseListener(click(() -> selectTravelerTab(REGISTER_TAB)));
-        card.add(left(tabs));
+        top.add(stretch(tabs));
 
         JPanel login = column();
-        addField(login, "Correo", travelerEmail);
-        addField(login, "Contraseña", withToggle(travelerPassword));
-        JPanel forgot = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 6));
+        login.add(Box.createVerticalStrut(30));
+        login.add(left(h1("Hola de nuevo, viajero.", 34)));
+        addField(login, travelerEmailField, 22);
+        addField(login, travelerPasswordField, 22);
+        JPanel forgot = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         forgot.setOpaque(false);
         forgot.add(link("¿Olvidaste tu contraseña?", () -> JOptionPane.showMessageDialog(this,
                 "La recuperación de contraseña por correo estará disponible próximamente.",
                 "Recuperar contraseña", JOptionPane.INFORMATION_MESSAGE)));
-        login.add(left(forgot));
+        login.add(Box.createVerticalStrut(12));
+        login.add(stretch(forgot));
         login.add(left(travelerError));
-        login.add(Box.createVerticalStrut(6));
-        login.add(left(travelerButton));
-        login.add(Box.createVerticalStrut(16));
-        login.add(left(separator()));
-        login.add(Box.createVerticalStrut(16));
-        FlatButton guest = wide(Theme.secondaryButton("Entrar como invitado"));
+        login.add(Box.createVerticalStrut(18));
+        PillButton guest = new PillButton("Entrar como invitado", PillButton.OUTLINE);
         guest.addActionListener(e -> show(GUEST));
-        login.add(left(guest));
-        login.add(Box.createVerticalStrut(10));
-        JLabel note = sub("<html><div style='text-align:center'>Como invitado puedes ver peajes y tarifas y pedir "
-                + "asistencia.<br>Con cuenta guardas tus placas y ves todas tus solicitudes.</div></html>");
-        note.setFont(Theme.font(Font.PLAIN, 12));
-        note.setHorizontalAlignment(SwingConstants.CENTER);
-        login.add(stretch(note));
+        JPanel buttons = flow();
+        buttons.add(travelerButton);
+        buttons.add(Box.createHorizontalStrut(14));
+        buttons.add(guest);
+        login.add(left(buttons));
         travelerButton.addActionListener(e -> travelerLogin());
 
         JPanel register = column();
-        addField(register, "Nombre", "Apellido", regFirst, regLast);
-        addField(register, "Correo", regEmail);
-        addField(register, "Teléfono", regPhone);
-        addField(register, "Contraseña", "Confirmar", regPassword, regConfirm);
-        addField(register, "Placa de tu vehículo (opcional)", regPlate);
+        register.add(Box.createVerticalStrut(26));
+        register.add(left(h1("Viaja con todo a la mano.", 30)));
+        Field first = regField("Nombre");
+        Field last = regField("Apellido");
+        addFields(register, first, last, 16);
+        addField(register, regField("Correo"), 16);
+        addFields(register, regField("Teléfono"), regField("Placa (opcional)"), 16);
+        addFields(register, regField("Contraseña"), regField("Confirmar"), 16);
+        JPanel terms = flow();
+        terms.add(regTerms);
+        terms.add(link("términos y la política de datos", () -> JOptionPane.showMessageDialog(this,
+                "RutaPeaje usa tu nombre, correo, teléfono y placa solo para mostrarte tus solicitudes de\n"
+                        + "asistencia y comunicarse contigo durante una atención. No se comparten con terceros.",
+                "Términos y política de datos", JOptionPane.INFORMATION_MESSAGE)));
+        regTerms.setIconTextGap(6);
+        register.add(Box.createVerticalStrut(16));
+        register.add(left(terms));
         register.add(left(regError));
-        register.add(Box.createVerticalStrut(6));
+        register.add(Box.createVerticalStrut(14));
         register.add(left(regButton));
         regButton.addActionListener(e -> registerTraveler());
 
         travelerTabPanel.setOpaque(false);
         travelerTabPanel.add(login, LOGIN_TAB);
         travelerTabPanel.add(register, REGISTER_TAB);
-        card.add(left(travelerTabPanel));
+        top.add(stretch(travelerTabPanel));
         selectTravelerTab(LOGIN_TAB);
-        return card;
+        return page(top, travelerNote);
+    }
+
+    private Field regField(String label) {
+        for (Field f : regFields) {
+            if (f.label.getText().equals(label)) {
+                return f;
+            }
+        }
+        throw new IllegalArgumentException(label);
+    }
+
+    private String currentTab() {
+        return travelerTabPanel.getComponentCount() > 0 && travelerTabPanel.getComponent(0).isVisible()
+                ? LOGIN_TAB : REGISTER_TAB;
     }
 
     private void selectTravelerTab(String tabName) {
@@ -563,6 +619,7 @@ public class LoginFrame extends JFrame {
         travelerTabs.show(travelerTabPanel, tabName);
         styleTab(loginTab, loginSelected);
         styleTab(registerTab, !loginSelected);
+        travelerNote.setVisible(loginSelected);
         travelerTabPanel.revalidate();
         getRootPane().setDefaultButton(loginSelected ? travelerButton : regButton);
     }
@@ -571,6 +628,7 @@ public class LoginFrame extends JFrame {
         String email = travelerEmail.getText();
         char[] password = travelerPassword.getPassword();
         travelerError.setText(" ");
+        clear(travelerEmailField, travelerPasswordField);
         travelerButton.setEnabled(false);
         Async.run(() -> auth.travelerLogin(email, password), traveler -> {
             travelerButton.setEnabled(true);
@@ -579,12 +637,19 @@ public class LoginFrame extends JFrame {
         }, error -> {
             travelerButton.setEnabled(true);
             travelerPassword.setText("");
-            travelerError.setText(error.getMessage());
+            if (!flag(error.getMessage(), travelerPasswordField, travelerEmailField)) {
+                travelerPasswordField.setError(error.getMessage());
+            }
         });
     }
 
     private void registerTraveler() {
         regError.setText(" ");
+        clear(regFields);
+        if (!regTerms.isSelected()) {
+            regError.setText("Debes aceptar los términos y la política de datos");
+            return;
+        }
         regButton.setEnabled(false);
         String first = regFirst.getText();
         String last = regLast.getText();
@@ -598,11 +663,13 @@ public class LoginFrame extends JFrame {
             regPassword.setText("");
             regConfirm.setText("");
             JOptionPane.showMessageDialog(this, "¡Cuenta creada, " + traveler.getFirstName() + "!",
-                    "Registro", JOptionPane.INFORMATION_MESSAGE);
+                    "Crear cuenta", JOptionPane.INFORMATION_MESSAGE);
             enterAsTraveler(traveler);
         }, error -> {
             regButton.setEnabled(true);
-            regError.setText(error.getMessage());
+            if (!flag(error.getMessage(), regFields)) {
+                regError.setText(error.getMessage());
+            }
         });
     }
 
@@ -618,68 +685,54 @@ public class LoginFrame extends JFrame {
         show(WELCOME);
     }
 
-    // ------------------------------------------------------------------ Invitado y seguimiento
+    // ------------------------------------------------------------------ Invitado y consulta de la solicitud
 
     private JComponent buildGuest() {
-        JPanel card = formCard();
-        card.add(left(back(() -> show(WELCOME))));
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(h2("Entrar como invitado")));
-        card.add(left(sub("Puedes usar RutaPeaje sin crear cuenta.")));
-        card.add(Box.createVerticalStrut(18));
-        JPanel compare = new JPanel(new GridLayout(1, 2, 12, 0));
-        compare.setOpaque(false);
-        compare.add(list("Sin cuenta", Theme.TEXT, Color.WHITE, Theme.BORDER, new String[]{
-            "Peajes, tarifas y mapa", "Costo de una ruta", "Pedir asistencia", "Ver tu solicitud con el número"}));
-        compare.add(list("Con cuenta, además", Theme.PRIMARY_DARK, new Color(0xF5F9FF), new Color(0xBFDBFE),
-                new String[]{"Tus placas guardadas", "Todas tus solicitudes", "Rutas favoritas"}));
-        card.add(left(compare));
-        card.add(Box.createVerticalStrut(20));
-        FlatButton go = wide(Theme.primaryButton("Continuar como invitado"));
-        go.addActionListener(e -> enterAsTraveler(null));
-        card.add(left(go));
-        card.add(Box.createVerticalStrut(14));
-        JPanel links = new JPanel(new BorderLayout());
-        links.setOpaque(false);
-        links.add(link("Ya pedí asistencia: consultar mi solicitud", () -> {
-            trackResult.setVisible(false);
-            trackError.setText(" ");
-            show(TRACK);
-        }), BorderLayout.WEST);
-        links.add(link("Crear cuenta", () -> {
-            selectTravelerTab(REGISTER_TAB);
-            show(TRAVELER);
-        }), BorderLayout.EAST);
-        card.add(left(links));
-        return card;
-    }
-
-    private JComponent buildTrack() {
-        JPanel card = formCard();
-        card.add(left(back(() -> show(GUEST))));
-        card.add(Box.createVerticalStrut(12));
-        card.add(left(h2("Consultar mi solicitud")));
-        card.add(left(sub("Para quien pidió asistencia sin registrarse.")));
-        addField(card, "Número de solicitud", trackNumber);
-        addField(card, "Teléfono con el que la pediste", trackPhone);
-        card.add(left(trackError));
-        card.add(Box.createVerticalStrut(6));
-        card.add(left(trackButton));
-        card.add(Box.createVerticalStrut(16));
+        JPanel top = column();
+        top.add(Box.createVerticalStrut(56));
+        top.add(left(h1("Entrar como invitado", 34)));
+        top.add(Box.createVerticalStrut(14));
+        top.add(left(lead("Sin cuenta puedes consultar peajes, tarifas y rutas, y pedir asistencia en la vía.")));
+        top.add(Box.createVerticalStrut(16));
+        for (String item : new String[]{"Peajes, tarifas y mapa", "Costo de una ruta",
+            "Pedir asistencia y seguirla con su número"}) {
+            JLabel line = new JLabel("✓   " + item);
+            line.setFont(Theme.font(Font.PLAIN, 14));
+            line.setForeground(new Color(0x3F3F46));
+            line.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+            top.add(left(line));
+        }
+        top.add(Box.createVerticalStrut(20));
+        guestButton.addActionListener(e -> enterAsTraveler(null));
+        top.add(left(actions(guestButton, "← Volver", () -> show(WELCOME))));
+        top.add(Box.createVerticalStrut(24));
+        top.add(stretch(divider()));
+        top.add(Box.createVerticalStrut(22));
+        JLabel already = new JLabel("¿Ya pediste asistencia?");
+        already.setFont(Theme.font(Font.BOLD, 15));
+        already.setForeground(INK);
+        top.add(left(already));
+        addFields(top, trackNumberField, trackPhoneField, 8);
+        top.add(Box.createVerticalStrut(14));
+        top.add(left(link("Consultar estado →", this::trackRequest)));
+        top.add(left(trackError));
         trackResult.setOpaque(false);
         trackResult.setVisible(false);
-        card.add(left(trackResult));
-        trackButton.addActionListener(e -> trackRequest());
-        return card;
+        top.add(Box.createVerticalStrut(4));
+        top.add(stretch(trackResult));
+        trackNumber.addActionListener(e -> trackRequest());
+        trackPhone.addActionListener(e -> trackRequest());
+        return page(top, null);
     }
 
     private void trackRequest() {
         trackError.setText(" ");
+        clear(trackNumberField, trackPhoneField);
         trackResult.setVisible(false);
         String number = trackNumber.getText().trim();
         String phone = trackPhone.getText().replaceAll("\\D", "");
         if (!number.matches("\\d{1,9}")) {
-            trackError.setText("Escriba el número de la solicitud");
+            trackNumberField.setError("Escribe el número de la solicitud");
             return;
         }
         Async.run(() -> {
@@ -699,21 +752,21 @@ public class LoginFrame extends JFrame {
 
     private void showTrackResult(Assistance a, Toll toll, AssistanceResource resource) {
         trackResult.removeAll();
-        JPanel box = new RoundedCard(Theme.BORDER, 1);
+        JPanel box = new RoundedCard(SOFT_LINE);
         box.setLayout(new BorderLayout(0, 6));
-        box.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
-        JPanel top = new JPanel(new BorderLayout());
-        top.setOpaque(false);
+        box.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        JPanel row = new JPanel(new BorderLayout());
+        row.setOpaque(false);
         JLabel title = new JLabel("#" + a.getAssistanceId() + " · " + StationTexts.type(a.getType())
                 + (a.getPlate() == null ? "" : " · " + a.getPlate()));
         title.setFont(Theme.font(Font.BOLD, 14));
-        title.setForeground(Theme.TEXT);
-        top.add(title, BorderLayout.WEST);
-        top.add(StationTexts.statusPill(a.getCurrentStatus()), BorderLayout.EAST);
-        box.add(top, BorderLayout.NORTH);
+        title.setForeground(INK);
+        row.add(title, BorderLayout.WEST);
+        row.add(StationTexts.statusPill(a.getCurrentStatus()), BorderLayout.EAST);
+        box.add(row, BorderLayout.NORTH);
         String where = toll == null ? "Peaje " + a.getTollId() : "Peaje " + toll.getName();
         String who = resource == null ? "Aún sin recurso asignado" : resource.getIdentification() + " asignado";
-        box.add(sub(where + " · " + who), BorderLayout.CENTER);
+        box.add(small(where + " · " + who), BorderLayout.CENTER);
         trackResult.add(box, BorderLayout.CENTER);
         trackResult.setVisible(true);
         trackResult.revalidate();
@@ -739,24 +792,28 @@ public class LoginFrame extends JFrame {
         return sb.toString();
     }
 
-    private static JPanel center(JComponent component) {
-        JPanel wrapper = new JPanel(new GridBagLayout());
-        wrapper.setBackground(Theme.BACKGROUND);
-        wrapper.add(component);
-        return wrapper;
-    }
-
-    private static JPanel formCard() {
-        JPanel card = new RoundedCard(Theme.BORDER, 1);
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createEmptyBorder(30, 36, 30, 36));
-        ((RoundedCard) card).fixedWidth = CARD_WIDTH + 72;
-        return card;
+    /**
+     * Arma un paso: el contenido arriba y, si hay, una nota pegada al fondo de la columna.
+     */
+    private static JPanel page(JComponent top, JComponent bottom) {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setOpaque(false);
+        page.add(top, BorderLayout.NORTH);
+        if (bottom != null) {
+            page.add(bottom, BorderLayout.SOUTH);
+        }
+        return page;
     }
 
     private static JPanel column() {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setOpaque(false);
+        return panel;
+    }
+
+    private static JPanel flow() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         panel.setOpaque(false);
         return panel;
     }
@@ -768,64 +825,114 @@ public class LoginFrame extends JFrame {
 
     private static JComponent stretch(JComponent c) {
         c.setAlignmentX(Component.LEFT_ALIGNMENT);
-        c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height));
+        c.setMaximumSize(new Dimension(FORM_WIDTH, Integer.MAX_VALUE));
         return c;
     }
 
-    private static void addField(JPanel panel, String label, JComponent input) {
-        panel.add(Box.createVerticalStrut(14));
-        panel.add(left(fieldLabel(label)));
-        panel.add(Box.createVerticalStrut(6));
-        input.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
-        input.setPreferredSize(new Dimension(CARD_WIDTH, 42));
-        panel.add(left(input));
+    /** Botón principal con el enlace para devolverse a su lado. */
+    private static JComponent actions(PillButton button, String backText, Runnable back) {
+        JPanel row = flow();
+        row.add(button);
+        row.add(Box.createHorizontalStrut(20));
+        JLabel label = muted(backText);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, PillButton.SHADOW, 0));
+        label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        label.addMouseListener(click(back));
+        row.add(label);
+        return row;
     }
 
-    private static void addField(JPanel panel, String label1, String label2, JComponent in1, JComponent in2) {
-        JPanel row = new JPanel(new GridLayout(1, 2, 14, 0));
+    private static void addField(JPanel panel, Field field, int gap) {
+        panel.add(Box.createVerticalStrut(gap));
+        panel.add(stretch(field));
+    }
+
+    private static void addFields(JPanel panel, Field a, Field b, int gap) {
+        JPanel row = new JPanel(new GridLayout(1, 2, 24, 0));
         row.setOpaque(false);
-        JPanel a = column();
-        addField(a, label1, in1);
-        JPanel b = column();
-        addField(b, label2, in2);
         row.add(a);
         row.add(b);
-        panel.add(left(row));
+        panel.add(Box.createVerticalStrut(gap));
+        panel.add(stretch(row));
     }
 
-    private static JLabel fieldLabel(String text) {
+    /**
+     * Marca en rojo el campo del que habla el mensaje de error.
+     * @return true si algún campo lo recibió.
+     */
+    private static boolean flag(String message, Field... fields) {
+        String text = message == null ? "" : message.toLowerCase();
+        for (Field f : fields) {
+            if (text.contains(f.key)) {
+                f.setError(message);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void clear(Field... fields) {
+        for (Field f : fields) {
+            f.setError(null);
+        }
+    }
+
+    private static JLabel h1(String text, int size) {
         JLabel label = new JLabel(text);
-        label.setFont(Theme.font(Font.BOLD, 13));
-        label.setForeground(Theme.MUTED);
+        label.setFont(BrandPanel.semibold(size));
+        label.setForeground(INK);
         return label;
     }
 
-    private static JLabel h2(String text) {
+    private static WrapText lead(String text) {
+        return new WrapText(text, FORM_WIDTH, Theme.font(Font.PLAIN, 15), BODY);
+    }
+
+    private static WrapText note(String text) {
+        return new WrapText(text, FORM_WIDTH, Theme.font(Font.PLAIN, 13), LABEL);
+    }
+
+    private static JLabel small(String text) {
         JLabel label = new JLabel(text);
-        label.setFont(Theme.font(Font.BOLD, 24));
-        label.setForeground(Theme.TEXT);
+        label.setFont(Theme.font(Font.PLAIN, 13));
+        label.setForeground(LABEL);
         return label;
     }
 
-    private static JLabel sub(String text) {
+    private static JLabel muted(String text) {
         JLabel label = new JLabel(text);
         label.setFont(Theme.font(Font.PLAIN, 14));
-        label.setForeground(Theme.MUTED);
+        label.setForeground(LABEL);
         return label;
     }
 
-    private static JLabel plain(String text) {
+    private static JLabel overline(String text) {
         JLabel label = new JLabel(text);
-        label.setFont(Theme.font(Font.PLAIN, 14));
-        label.setForeground(Theme.TEXT);
+        label.setFont(Theme.font(Font.BOLD, 11).deriveFont(Map.of(TextAttribute.TRACKING, 0.12f)));
+        label.setForeground(LABEL);
         return label;
     }
 
-    private static JLabel value(String text, Color color) {
+    private static JLabel valueLabel(String text, Color color, boolean bold) {
         JLabel label = new JLabel(text, SwingConstants.RIGHT);
-        label.setFont(Theme.font(Font.BOLD, 14));
+        label.setFont(Theme.font(bold ? Font.BOLD : Font.PLAIN, bold ? 16 : 13));
         label.setForeground(color);
         return label;
+    }
+
+    /** Fila del resumen: nombre a la izquierda, valor a la derecha y una línea fina debajo. */
+    private static JPanel summaryRow(String name, JLabel value) {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setOpaque(false);
+        row.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, SOFT_LINE),
+                BorderFactory.createEmptyBorder(12, 0, 12, 0)));
+        JLabel label = new JLabel(name);
+        label.setFont(Theme.font(Font.PLAIN, 15));
+        label.setForeground(INK);
+        row.add(label, BorderLayout.WEST);
+        row.add(value, BorderLayout.EAST);
+        return row;
     }
 
     private static JLabel errorLabel() {
@@ -837,32 +944,25 @@ public class LoginFrame extends JFrame {
     }
 
     private static JLabel tab(String text) {
-        JLabel label = new JLabel(text, SwingConstants.CENTER);
+        JLabel label = new JLabel(text);
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        label.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
         return label;
     }
 
     private static void styleTab(JLabel tab, boolean selected) {
-        tab.setFont(Theme.font(Font.BOLD, 14));
-        tab.setForeground(selected ? Theme.PRIMARY : Theme.MUTED);
+        tab.setFont(Theme.font(selected ? Font.BOLD : Font.PLAIN, 15));
+        tab.setForeground(selected ? INK : LABEL);
         tab.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, selected ? 3 : 0, 0, Theme.PRIMARY),
-                BorderFactory.createEmptyBorder(10, 0, selected ? 7 : 10, 0)));
+                BorderFactory.createMatteBorder(0, 0, 2, 0, selected ? Theme.PRIMARY : new Color(0, 0, 0, 0)),
+                BorderFactory.createEmptyBorder(0, 0, 10, 0)));
     }
 
     private static JLabel link(String text, Runnable action) {
         JLabel label = new JLabel(text);
-        label.setFont(Theme.font(Font.BOLD, 14));
+        label.setFont(Theme.font(Font.PLAIN, 14));
         label.setForeground(Theme.PRIMARY);
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         label.addMouseListener(click(action));
-        return label;
-    }
-
-    private static JLabel back(Runnable action) {
-        JLabel label = link("← Volver", action);
-        label.setForeground(Theme.MUTED);
         return label;
     }
 
@@ -875,204 +975,409 @@ public class LoginFrame extends JFrame {
         };
     }
 
-    private static JLabel hint(String html) {
-        JLabel label = new JLabel("<html><div style='width:330px'>" + html + "</div></html>");
-        label.setFont(Theme.font(Font.PLAIN, 13));
-        label.setForeground(new Color(0x1E40AF));
-        label.setOpaque(true);
-        label.setBackground(new Color(0xEFF6FF));
-        label.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(0xBFDBFE)),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12)));
-        return label;
-    }
-
-    private static JPanel list(String title, Color titleColor, Color background, Color border, String[] items) {
-        JPanel box = new RoundedCard(border, 1, background);
-        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
-        box.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
-        JLabel name = new JLabel(title);
-        name.setFont(Theme.font(Font.BOLD, 14));
-        name.setForeground(titleColor);
-        box.add(left(name));
-        for (String item : items) {
-            JLabel line = new JLabel("<html><span style='color:#16A34A'>✓</span>&nbsp; " + item + "</html>");
-            line.setFont(Theme.font(Font.PLAIN, 13));
-            line.setForeground(Theme.TEXT);
-            line.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
-            box.add(left(line));
-        }
-        return box;
-    }
-
-    private static JComponent separator() {
-        JPanel row = new JPanel(new BorderLayout(10, 0));
-        row.setOpaque(false);
-        row.add(line(), BorderLayout.WEST);
-        JLabel o = new JLabel("o", SwingConstants.CENTER);
-        o.setForeground(new Color(0x9CA3AF));
-        row.add(o, BorderLayout.CENTER);
-        row.add(line(), BorderLayout.EAST);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
-        return row;
-    }
-
-    private static JComponent line() {
-        JPanel line = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                g.setColor(Theme.BORDER);
-                g.drawLine(0, getHeight() / 2, getWidth(), getHeight() / 2);
-            }
-        };
-        line.setOpaque(false);
-        line.setPreferredSize(new Dimension(CARD_WIDTH / 2 - 20, 18));
+    private static JComponent divider() {
+        JPanel line = new JPanel();
+        line.setOpaque(true);
+        line.setBackground(SOFT_LINE);
+        line.setPreferredSize(new Dimension(FORM_WIDTH, 1));
+        line.setMaximumSize(new Dimension(FORM_WIDTH, 1));
         return line;
     }
 
-    private static FlatButton wide(FlatButton button) {
-        button.setFont(Theme.font(Font.BOLD, 15));
-        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
-        button.setPreferredSize(new Dimension(CARD_WIDTH, 44));
-        return button;
-    }
-
-    private static FlatButton green(FlatButton button) {
-        button.setColors(Theme.SUCCESS, new Color(0x15803D), Color.WHITE, null);
-        return button;
+    private static JTextField textField() {
+        JTextField field = new JTextField();
+        styleEditor(field);
+        return field;
     }
 
     private static JPasswordField passwordField() {
         JPasswordField field = new JPasswordField();
-        field.setFont(Theme.font(Font.PLAIN, 15));
-        field.setForeground(Theme.TEXT);
-        field.setBorder(Theme.inputBorder());
+        styleEditor(field);
         return field;
+    }
+
+    private static void styleEditor(JTextComponent editor) {
+        editor.setFont(Theme.font(Font.PLAIN, 16));
+        editor.setForeground(INK);
+        editor.setCaretColor(INK);
+        editor.setOpaque(false);
+        editor.setBorder(BorderFactory.createEmptyBorder());
     }
 
     private static JCheckBox checkBox(String text) {
         JCheckBox box = new JCheckBox(text);
         box.setOpaque(false);
-        box.setFont(Theme.font(Font.PLAIN, 14));
-        box.setForeground(Theme.TEXT);
+        box.setFont(Theme.font(Font.PLAIN, 13));
+        box.setForeground(LABEL);
         box.setFocusPainted(false);
+        box.setBorder(BorderFactory.createEmptyBorder());
         return box;
     }
 
-    /** Campo de contraseña con el botón "Mostrar" / "Ocultar" dentro del recuadro. */
-    private static JComponent withToggle(JPasswordField field) {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(Theme.inputBorder());
-        field.setBorder(BorderFactory.createEmptyBorder());
+    /** Botón "Mostrar" / "Ocultar" que va a la derecha de un campo de contraseña. */
+    private static JLabel toggle(JPasswordField field) {
         char echo = field.getEchoChar();
         JLabel toggle = new JLabel("Mostrar");
         toggle.setFont(Theme.font(Font.BOLD, 12));
-        toggle.setForeground(Theme.MUTED);
+        toggle.setForeground(LABEL);
         toggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         toggle.addMouseListener(click(() -> {
             boolean hidden = field.getEchoChar() != 0;
             field.setEchoChar(hidden ? (char) 0 : echo);
             toggle.setText(hidden ? "Ocultar" : "Mostrar");
         }));
-        panel.add(field, BorderLayout.CENTER);
-        panel.add(toggle, BorderLayout.EAST);
-        return panel;
+        return toggle;
     }
 
-    /** Panel blanco con esquinas redondeadas y borde. */
-    private static class RoundedCard extends JPanel {
-        private final Color border;
-        private final int thickness;
-        private final Color fill;
-        private int fixedWidth;
+    // ------------------------------------------------------------------ Componentes propios
 
-        RoundedCard(Color border, int thickness) {
-            this(border, thickness, Color.WHITE);
+    /**
+     * Campo con el nombre arriba y una línea debajo. La línea se pone azul cuando el campo tiene
+     * el foco y roja con su mensaje cuando hay un error.
+     */
+    private static final class Field extends JPanel {
+        private final JLabel label;
+        private final JLabel message = new JLabel(" ");
+        private String key;
+        private boolean focused;
+        private boolean error;
+
+        Field(String text, JComponent editor) {
+            this(text, editor, null);
         }
 
-        RoundedCard(Color border, int thickness, Color fill) {
-            this.border = border;
-            this.thickness = thickness;
-            this.fill = fill;
+        Field(String text, JComponent editor, JComponent trailing) {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
             setOpaque(false);
+            key = text.toLowerCase().split(" ")[0];
+            label = new JLabel(text);
+            label.setFont(Theme.font(Font.PLAIN, 12));
+            label.setForeground(LABEL);
+            add(left(label));
+
+            JPanel row = new JPanel(new BorderLayout(8, 0)) {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    super.paintComponent(g);
+                    int thickness = focused || error ? 2 : 1;
+                    g.setColor(error ? Theme.DANGER : focused ? Theme.PRIMARY : LINE);
+                    g.fillRect(0, getHeight() - thickness, getWidth(), thickness);
+                }
+            };
+            row.setOpaque(false);
+            row.setBorder(BorderFactory.createEmptyBorder(6, 0, 9, 0));
+            row.add(editor, BorderLayout.CENTER);
+            if (trailing != null) {
+                row.add(trailing, BorderLayout.EAST);
+            }
+            add(left(row));
+
+            message.setFont(Theme.font(Font.PLAIN, 12));
+            message.setForeground(Theme.DANGER);
+            message.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
+            message.setVisible(false);
+            add(left(message));
+
+            editor.addFocusListener(new FocusAdapter() {
+                @Override
+                public void focusGained(FocusEvent e) {
+                    focused = true;
+                    refresh();
+                }
+
+                @Override
+                public void focusLost(FocusEvent e) {
+                    focused = false;
+                    refresh();
+                }
+            });
+            if (editor instanceof JTextComponent) {
+                ((JTextComponent) editor).getDocument().addDocumentListener(new DocumentListener() {
+                    @Override
+                    public void insertUpdate(DocumentEvent e) {
+                        if (error && !((JTextComponent) editor).getText().isEmpty()) {
+                            setError(null);
+                        }
+                    }
+
+                    @Override
+                    public void removeUpdate(DocumentEvent e) {
+                        // Borrar no quita el error: así el mensaje sigue a la vista tras un intento fallido.
+                    }
+
+                    @Override
+                    public void changedUpdate(DocumentEvent e) {
+                        // No aplica a campos de texto plano.
+                    }
+                });
+            }
+        }
+
+        /** Cambia la palabra con la que se reconoce este campo en los mensajes de error. */
+        Field key(String word) {
+            this.key = word;
+            return this;
+        }
+
+        void setError(String text) {
+            error = text != null;
+            message.setText(error ? text : " ");
+            message.setVisible(error);
+            refresh();
+            revalidate();
+        }
+
+        private void refresh() {
+            label.setForeground(error ? Theme.DANGER : focused ? Theme.PRIMARY : LABEL);
+            repaint();
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return new Dimension(FORM_WIDTH, getPreferredSize().height);
+        }
+    }
+
+    /** Botón redondeado tipo píldora: azul principal, verde o con borde. */
+    private static final class PillButton extends JButton {
+        static final int PRIMARY = 0;
+        static final int SUCCESS = 1;
+        static final int OUTLINE = 2;
+        static final int SHADOW = 6;
+        private static final int HEIGHT = 44;
+
+        private final int style;
+
+        PillButton(String text, int style) {
+            super(text);
+            this.style = style;
+            setUI(new BasicButtonUI());
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setOpaque(false);
+            setRolloverEnabled(true);
+            setFont(Theme.font(Font.BOLD, 15));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+
+        @Override
+        public void setEnabled(boolean enabled) {
+            super.setEnabled(enabled);
+            setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
         }
 
         @Override
         public Dimension getPreferredSize() {
-            Dimension d = super.getPreferredSize();
-            return fixedWidth > 0 ? new Dimension(fixedWidth, d.height) : d;
+            FontMetrics fm = getFontMetrics(getFont());
+            return new Dimension(fm.stringWidth(getText()) + 56, HEIGHT + SHADOW);
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return getPreferredSize();
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            int w = getWidth();
+            boolean hot = getModel().isRollover() || getModel().isPressed();
+            Color fill;
+            Color text = Color.WHITE;
+            Color glow = null;
+            if (!isEnabled()) {
+                fill = SOFT_LINE;
+                text = ARROW;
+            } else if (style == OUTLINE) {
+                fill = hot ? new Color(0xF4F4F5) : Color.WHITE;
+                text = INK;
+            } else if (style == SUCCESS) {
+                fill = hot ? new Color(0x15803D) : Theme.SUCCESS;
+                glow = Theme.SUCCESS;
+            } else {
+                fill = hot ? Theme.PRIMARY_DARK : Theme.PRIMARY;
+                glow = Theme.PRIMARY;
+            }
+            if (glow != null) {
+                for (int i = SHADOW; i >= 1; i--) {
+                    g2.setColor(new Color(glow.getRed(), glow.getGreen(), glow.getBlue(), 10));
+                    g2.fill(new RoundRectangle2D.Double(i, 2 + i * 0.6, w - 2.0 * i, HEIGHT, HEIGHT, HEIGHT));
+                }
+            }
             g2.setColor(fill);
-            g2.fill(new RoundRectangle2D.Double(0, 0, getWidth() - 1, getHeight() - 1, 18, 18));
-            g2.setColor(border);
-            g2.setStroke(new BasicStroke(thickness));
-            g2.draw(new RoundRectangle2D.Double(thickness / 2.0, thickness / 2.0,
-                    getWidth() - 1 - thickness, getHeight() - 1 - thickness, 18, 18));
+            g2.fill(new RoundRectangle2D.Double(0, 0, w - 1, HEIGHT - 1, HEIGHT, HEIGHT));
+            if (style == OUTLINE && isEnabled()) {
+                g2.setColor(LINE);
+                g2.draw(new RoundRectangle2D.Double(0.5, 0.5, w - 2, HEIGHT - 2, HEIGHT, HEIGHT));
+            }
+            g2.setFont(getFont());
+            g2.setColor(text);
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString(getText(), (w - fm.stringWidth(getText())) / 2,
+                    (HEIGHT - fm.getHeight()) / 2 + fm.getAscent());
             g2.dispose();
         }
     }
 
-    /** Íconos dibujados para las tarjetas de la bienvenida. */
-    private enum Icon { CAR, BADGE }
+    /** Opción de la bienvenida: ícono, título, descripción y flecha. Se resalta al pasar el mouse. */
+    private static final class OptionRow extends JPanel {
+        static final int CAR = 0;
+        static final int BADGE = 1;
+        private static final int RING = 3;
+        private boolean hover;
 
-    /** Cuadro de color con un ícono blanco dibujado. */
-    private static class IconBox extends JComponent {
-        private final Icon icon;
-        private final Color color;
+        OptionRow(int icon, String title, String description, Runnable action) {
+            super(new BorderLayout(18, 0));
+            setOpaque(false);
+            setBorder(BorderFactory.createEmptyBorder(18 + RING, 20 + RING, 18 + RING, 20 + RING));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        IconBox(Icon icon, Color color) {
-            this.icon = icon;
-            this.color = color;
-            Dimension size = new Dimension(58, 58);
-            setPreferredSize(size);
-            setMaximumSize(size);
-            setMinimumSize(size);
+            JPanel iconBox = new JPanel(new BorderLayout());
+            iconBox.setOpaque(false);
+            iconBox.add(new OutlineIcon(icon), BorderLayout.CENTER);
+            add(iconBox, BorderLayout.WEST);
+
+            JPanel texts = column();
+            JLabel name = new JLabel(title);
+            name.setFont(BrandPanel.semibold(17));
+            name.setForeground(INK);
+            texts.add(left(name));
+            texts.add(Box.createVerticalStrut(3));
+            texts.add(left(new WrapText(description, 236, Theme.font(Font.PLAIN, 13), LABEL)));
+            add(texts, BorderLayout.CENTER);
+
+            JLabel arrow = new JLabel("→");
+            arrow.setFont(Theme.font(Font.PLAIN, 20));
+            arrow.setForeground(ARROW);
+            add(arrow, BorderLayout.EAST);
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hover = true;
+                    arrow.setForeground(Theme.PRIMARY);
+                    repaint();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hover = false;
+                    arrow.setForeground(ARROW);
+                    repaint();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    action.run();
+                }
+            });
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return new Dimension(FORM_WIDTH + 2 * RING, getPreferredSize().height);
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(FORM_WIDTH + 2 * RING, super.getPreferredSize().height);
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
-            g2.fill(new RoundRectangle2D.Double(0, 0, 58, 58, 16, 16));
+            double w = getWidth() - 2.0 * RING;
+            double h = getHeight() - 2.0 * RING;
+            if (hover) {
+                g2.setColor(new Color(0xDBEAFE));
+                g2.setStroke(new BasicStroke(RING * 2));
+                g2.draw(new RoundRectangle2D.Double(RING, RING, w - 1, h - 1, 24, 24));
+            }
             g2.setColor(Color.WHITE);
-            g2.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            if (icon == Icon.CAR) {
+            g2.fill(new RoundRectangle2D.Double(RING, RING, w - 1, h - 1, 24, 24));
+            g2.setColor(hover ? Theme.PRIMARY : SOFT_LINE);
+            g2.setStroke(new BasicStroke(1));
+            g2.draw(new RoundRectangle2D.Double(RING + 0.5, RING + 0.5, w - 2, h - 2, 24, 24));
+            g2.dispose();
+        }
+    }
+
+    /** Ícono de línea (carro o carné) dentro de un cuadro con borde. */
+    private static final class OutlineIcon extends JComponent {
+        private static final int SIZE = 44;
+        private final int icon;
+
+        OutlineIcon(int icon) {
+            this.icon = icon;
+            Dimension size = new Dimension(SIZE, SIZE);
+            setPreferredSize(size);
+            setMinimumSize(size);
+            setMaximumSize(size);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int y = (getHeight() - SIZE) / 2;
+            g2.translate(0, y);
+            g2.setColor(new Color(0x3F3F46));
+            g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.draw(new RoundRectangle2D.Double(0.75, 0.75, SIZE - 1.5, SIZE - 1.5, 20, 20));
+            if (icon == OptionRow.CAR) {
                 Path2D body = new Path2D.Double();
-                body.moveTo(14, 34);
-                body.lineTo(18, 24);
-                body.quadTo(19.5, 21, 23, 21);
-                body.lineTo(35, 21);
-                body.quadTo(38.5, 21, 40, 24);
-                body.lineTo(44, 34);
-                body.lineTo(44, 40);
-                body.lineTo(14, 40);
+                body.moveTo(12, 27);
+                body.lineTo(15, 19);
+                body.quadTo(16, 17, 18.5, 17);
+                body.lineTo(25.5, 17);
+                body.quadTo(28, 17, 29, 19);
+                body.lineTo(32, 27);
+                body.lineTo(32, 30);
+                body.lineTo(12, 30);
                 body.closePath();
                 g2.draw(body);
-                g2.drawLine(14, 34, 44, 34);
-                g2.fillOval(18, 38, 7, 7);
-                g2.fillOval(33, 38, 7, 7);
+                g2.drawLine(12, 26, 32, 26);
+                g2.drawOval(15, 28, 4, 4);
+                g2.drawOval(25, 28, 4, 4);
             } else {
-                g2.draw(new RoundRectangle2D.Double(13, 17, 32, 24, 5, 5));
-                g2.drawOval(18, 22, 7, 7);
-                g2.drawArc(16, 30, 11, 9, 0, 180);
-                g2.drawLine(30, 25, 40, 25);
-                g2.drawLine(30, 31, 37, 31);
+                g2.draw(new RoundRectangle2D.Double(11, 14, 22, 16, 3, 3));
+                g2.drawOval(14, 17, 5, 5);
+                g2.drawArc(13, 23, 7, 6, 0, 180);
+                g2.drawLine(23, 19, 29, 19);
+                g2.drawLine(23, 24, 28, 24);
             }
             g2.dispose();
         }
     }
 
-    /** Círculo verde con un chulo, para el saludo del jefe y el administrador. */
-    private static class CheckBadge extends JComponent {
-        CheckBadge() {
-            Dimension size = new Dimension(64, 64);
+    /** Logo de RutaPeaje: cuadro azul oscuro con una barra ámbar. */
+    private static final class LogoMark extends JComponent {
+        LogoMark() {
+            setPreferredSize(new Dimension(30, 30));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(NAVY);
+            g2.fill(new RoundRectangle2D.Double(0, 0, 30, 30, 16, 16));
+            g2.setColor(Theme.WARNING);
+            g2.fill(new RoundRectangle2D.Double(7, 13, 16, 4, 4, 4));
+            g2.dispose();
+        }
+    }
+
+    /** Círculo verde claro con un chulo: confirma que el empleado entró bien. */
+    private static final class Badge extends JComponent {
+        private static final int SIZE = 44;
+
+        Badge() {
+            Dimension size = new Dimension(SIZE, SIZE);
             setPreferredSize(size);
             setMaximumSize(size);
         }
@@ -1082,20 +1387,103 @@ public class LoginFrame extends JFrame {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(new Color(0xDCFCE7));
-            g2.fillOval(0, 0, 64, 64);
+            g2.fillOval(0, 0, SIZE, SIZE);
             g2.setColor(Theme.SUCCESS);
-            g2.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g2.drawPolyline(new int[]{20, 29, 45}, new int[]{33, 42, 24}, 3);
+            g2.setStroke(new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.drawPolyline(new int[]{14, 20, 31}, new int[]{23, 29, 16}, 3);
             g2.dispose();
         }
     }
 
-    private static JComponent centered(CheckBadge badge) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        row.setOpaque(false);
-        row.add(badge);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
-        return row;
+    /** Texto de varias líneas que se parte solo al ancho indicado. */
+    private static final class WrapText extends JTextArea {
+        private final int width;
+
+        WrapText(String text, int width, Font font, Color color) {
+            super(text);
+            this.width = width;
+            setFont(font);
+            setForeground(color);
+            setLineWrap(true);
+            setWrapStyleWord(true);
+            setEditable(false);
+            setFocusable(false);
+            setOpaque(false);
+            setHighlighter(null);
+            setBorder(BorderFactory.createEmptyBorder());
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            View view = getUI().getRootView(this);
+            view.setSize(width, Short.MAX_VALUE);
+            return new Dimension(width, (int) Math.ceil(view.getPreferredSpan(View.Y_AXIS)));
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return getPreferredSize();
+        }
+    }
+
+    /** Lista desplegable sin recuadro, con una flecha simple: va sobre la línea del campo. */
+    private static final class FlatComboUI extends BasicComboBoxUI {
+        @Override
+        protected JButton createArrowButton() {
+            JButton arrow = new JButton("⌄");
+            arrow.setUI(new BasicButtonUI());
+            arrow.setFont(Theme.font(Font.BOLD, 16));
+            arrow.setForeground(LABEL);
+            arrow.setContentAreaFilled(false);
+            arrow.setBorder(BorderFactory.createEmptyBorder(0, 8, 6, 0));
+            arrow.setFocusPainted(false);
+            return arrow;
+        }
+
+        @Override
+        public void paintCurrentValueBackground(Graphics g, java.awt.Rectangle bounds, boolean hasFocus) {
+            // Sin fondo: se ve solo el texto sobre la línea del campo.
+        }
+
+        @Override
+        public void paintCurrentValue(Graphics g, java.awt.Rectangle bounds, boolean hasFocus) {
+            super.paintCurrentValue(g, bounds, false);
+        }
+    }
+
+    /** Pestañas con línea gris debajo; la pestaña activa lleva su propia línea azul. */
+    private static final class TabBar extends JPanel {
+        TabBar() {
+            super(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            g.setColor(SOFT_LINE);
+            g.fillRect(0, getHeight() - 1, getWidth(), 1);
+        }
+    }
+
+    /** Recuadro blanco con esquinas redondeadas y borde. */
+    private static final class RoundedCard extends JPanel {
+        private final Color border;
+
+        RoundedCard(Color border) {
+            this.border = border;
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(Color.WHITE);
+            g2.fill(new RoundRectangle2D.Double(0, 0, getWidth() - 1, getHeight() - 1, 20, 20));
+            g2.setColor(border);
+            g2.draw(new RoundRectangle2D.Double(0.5, 0.5, getWidth() - 2, getHeight() - 2, 20, 20));
+            g2.dispose();
+        }
     }
 }
