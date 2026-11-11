@@ -21,4 +21,12 @@ public interface ICashierDAO {
      * @throws DataAccessException Si falla la consulta en la base de datos.
      */
     Optional<CashierSession> findOperator(String operatorId);
+
+    /**
+     * Busca la contraseña cifrada (hash) de un empleado activo, para validar el inicio de sesión.
+     * @param operatorId Cédula del empleado.
+     * @return Hash de la contraseña, o vacío si el empleado no existe, está inactivo o no tiene contraseña.
+     * @throws DataAccessException Si falla la consulta en la base de datos.
+     */
+    Optional<String> findPasswordHash(String operatorId);
 }

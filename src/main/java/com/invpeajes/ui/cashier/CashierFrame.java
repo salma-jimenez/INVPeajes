@@ -4,6 +4,7 @@ import com.invpeajes.model.CashierSession;
 import com.invpeajes.service.CashierService;
 import com.invpeajes.ui.common.FlatButton;
 import com.invpeajes.ui.common.Theme;
+import com.invpeajes.ui.login.LoginFrame;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
@@ -23,9 +24,7 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
 import javax.swing.Timer;
-import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 
 /**
@@ -98,30 +97,20 @@ public class CashierFrame extends JFrame {
     }
 
     /**
-     * Abre la caja: pide la cédula y la caseta, y muestra la pantalla de cobro.
-     * Si el operador cancela, la aplicación termina.
+     * Vuelve a la ventana de inicio de sesión (al cerrar el turno).
+     * El parámetro se conserva por compatibilidad; el inicio de sesión crea sus propios servicios.
      * @param service Servicio de la caja.
      */
     public static void start(CashierService service) {
-        CashierSession session = new ShiftStartDialog(null, service).showDialog();
-        if (session == null) {
-            System.exit(0);
-        }
-        new CashierFrame(service, session).setVisible(true);
+        LoginFrame.open();
     }
 
     /**
-     * Punto de entrada de la caja (sesión del cajero).
+     * Abre RutaPeaje desde la ventana de inicio de sesión.
      * @param args No se usan.
      */
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException e) {
-            // Si no se puede usar el estilo del sistema, Swing usa el suyo por defecto.
-        }
-        SwingUtilities.invokeLater(() ->
-                start(new CashierService()));
+        LoginFrame.main(args);
     }
 
     private void show(String page) {
