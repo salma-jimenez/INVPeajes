@@ -23,6 +23,7 @@ public class Assistance {
     private int tollId;
     private Integer resourceId;
     private Long ticketId;
+    private Integer travelerId;
 
     /** Constructor vacío requerido para mapear filas desde la base de datos. */
     public Assistance() {
@@ -151,6 +152,22 @@ public class Assistance {
 
     public void setTicketId(Long ticketId) {
         this.ticketId = ticketId;
+    }
+
+    /**
+     * Viajero con cuenta que pidió la asistencia.
+     *
+     * @return ID del viajero, o null si la pidió un invitado o un empleado
+     */
+    public Integer getTravelerId() {
+        return travelerId;
+    }
+
+    /**
+     * @param travelerId ID del viajero, o null si la pide un invitado
+     */
+    public void setTravelerId(Integer travelerId) {
+        this.travelerId = travelerId;
     }
 
     @Override

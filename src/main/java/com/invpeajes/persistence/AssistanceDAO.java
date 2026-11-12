@@ -30,11 +30,12 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
 
     private static final String COLUMNS =
             "ID_ASISTENCIA, TIPO_ASISTENCIA, FECHA_SOLICITUD, LATITUD_INCIDENTE, LONGITUD_INCIDENTE, "
-            + "ESTADO_ACTUAL, OBSERVACIONES, TELEFONO_CONTACTO, COSTO, PLACA, ID_PEAJE, ID_RECURSO, ID_TIQUETE";
+            + "ESTADO_ACTUAL, OBSERVACIONES, TELEFONO_CONTACTO, COSTO, PLACA, ID_PEAJE, ID_RECURSO, ID_TIQUETE, "
+            + "ID_VIAJERO";
     private static final String NEXT_ID_SQL =
             "SELECT NVL(MAX(ID_ASISTENCIA), 0) + 1 FROM PEAJE.ASISTENCIA";
     private static final String INSERT_SQL =
-            "INSERT INTO PEAJE.ASISTENCIA (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO PEAJE.ASISTENCIA (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String SELECT_SQL =
             "SELECT " + COLUMNS + " FROM PEAJE.ASISTENCIA ";
     private static final String UPDATE_SQL =
@@ -141,6 +142,17 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     public List<Assistance> findByToll(int tollId) {
         return query(SELECT_SQL + "WHERE ID_PEAJE = ? ORDER BY FECHA_SOLICITUD DESC",
                 tollId, "Error al listar asistencias del peaje " + tollId);
+    }
+
+    /**
+     * Lista las asistencias que pidió un viajero con cuenta.
+     *
+     * @param travelerId ID del viajero
+     * @return asistencias del viajero, más recientes primero
+     */
+    public List<Assistance> findByTraveler(int travelerId) {
+        return query(SELECT_SQL + "WHERE ID_VIAJERO = ? ORDER BY FECHA_SOLICITUD DESC",
+                travelerId, "Error al listar asistencias del viajero " + travelerId);
     }
 
     /**
@@ -268,6 +280,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
             ps.setInt(11, a.getTollId());
             JdbcUtils.setNullableInt(ps, 12, a.getResourceId());
             JdbcUtils.setNullableLong(ps, 13, a.getTicketId());
+            JdbcUtils.setNullableInt(ps, 14, a.getTravelerId());
             ps.executeUpdate();
         }
     }
@@ -331,6 +344,7 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
         a.setTollId(rs.getInt("ID_PEAJE"));
         a.setResourceId(JdbcUtils.getNullableInt(rs, "ID_RECURSO"));
         a.setTicketId(JdbcUtils.getNullableLong(rs, "ID_TIQUETE"));
+        a.setTravelerId(JdbcUtils.getNullableInt(rs, "ID_VIAJERO"));
         return a;
     }
 

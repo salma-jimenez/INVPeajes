@@ -54,7 +54,7 @@ public class DataAccessException extends RuntimeException {
             case ORA_CHILD_RECORD_FOUND:
                 return "no se puede eliminar porque tiene registros asociados";
             case ORA_NO_CONNECTION:
-                return "no hay conexión con el servidor Oracle";
+                return "no hay conexión con el servidor Oracle (" + e.getMessage() + ")";
             default:
                 return e.getMessage();
         }

@@ -1,9 +1,6 @@
 package com.invpeajes.ui.login;
 
-import com.invpeajes.model.Assistance;
-import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.CashierSession;
-import com.invpeajes.model.Toll;
 import com.invpeajes.model.TollBooth;
 import com.invpeajes.model.Traveler;
 import com.invpeajes.service.AuthService;
@@ -13,7 +10,7 @@ import com.invpeajes.ui.cashier.CashierFrame;
 import com.invpeajes.ui.common.Async;
 import com.invpeajes.ui.common.Theme;
 import com.invpeajes.ui.station.StationFrame;
-import com.invpeajes.ui.station.StationTexts;
+import com.invpeajes.ui.traveler.TravelerFrame;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -74,8 +71,8 @@ import javax.swing.text.View;
  *       y abre la Caja; el jefe de estación ve el resumen de su peaje y entra a su panel; el
  *       administrador ve su saludo (su panel está en construcción).</li>
  *   <li><b>Viajeros</b>: iniciar sesión y crear cuenta en pestañas.</li>
- *   <li><b>Invitado</b>: entrar sin cuenta y consultar una solicitud de asistencia con su número y
- *       teléfono.</li>
+ *   <li><b>Invitado</b>: entrar sin cuenta para ver el mapa de peajes y planificar viajes. Para
+ *       pedir asistencia hace falta una cuenta (se crea desde la misma pantalla del viajero).</li>
  * </ul>
  *
  * @author Salomejimenez
@@ -89,7 +86,6 @@ public class LoginFrame extends JFrame {
     private static final String GREETING = "greeting";
     private static final String TRAVELER = "traveler";
     private static final String GUEST = "guest";
-    private static final String TRACK = "track";
     private static final String LOGIN_TAB = "login";
     private static final String REGISTER_TAB = "register";
     private static final String PREF_EMPLOYEE_ID = "employeeId";
@@ -150,8 +146,8 @@ public class LoginFrame extends JFrame {
     };
     private final JLabel loginTab = tab("Iniciar sesión");
     private final JLabel registerTab = tab("Crear cuenta");
-    private final WrapText travelerNote = note("Como invitado puedes ver peajes y tarifas y pedir asistencia.\n"
-            + "Con cuenta guardas tus placas y ves todas tus solicitudes.");
+    private final WrapText travelerNote = note("Como invitado puedes ver el mapa de peajes y planificar viajes.\n"
+            + "Con cuenta puedes pedir asistencia en la vía y seguirla paso a paso.");
     private final JTextField travelerEmail = textField();
     private final JPasswordField travelerPassword = passwordField();
     private final Field travelerEmailField = new Field("Correo", travelerEmail);
@@ -179,12 +175,6 @@ public class LoginFrame extends JFrame {
     private final JLabel regError = errorLabel();
     private final PillButton regButton = new PillButton("Crear cuenta", PillButton.PRIMARY);
 
-    private final JTextField trackNumber = textField();
-    private final JTextField trackPhone = textField();
-    private final Field trackNumberField = new Field("N.º de solicitud", trackNumber).key("número");
-    private final Field trackPhoneField = new Field("Teléfono", trackPhone);
-    private final JLabel trackError = errorLabel();
-    private final JPanel trackResult = new JPanel(new BorderLayout(0, 6));
     private final PillButton guestButton = new PillButton("Continuar como invitado", PillButton.PRIMARY);
 
     /**
@@ -231,6 +221,14 @@ public class LoginFrame extends JFrame {
         new LoginFrame(new AuthService(), new CashierService(), new StationManagerService()).setVisible(true);
     }
 
+    /** Abre la ventana de inicio directamente en "Iniciar sesión" del viajero. */
+    public static void openTravelerLogin() {
+        LoginFrame frame = new LoginFrame(new AuthService(), new CashierService(), new StationManagerService());
+        frame.selectTravelerTab(LOGIN_TAB);
+        frame.show(TRAVELER);
+        frame.setVisible(true);
+    }
+
     /**
      * Punto de entrada de RutaPeaje.
      * @param args No se usan.
@@ -246,10 +244,10 @@ public class LoginFrame extends JFrame {
 
     /**
      * Muestra un paso del inicio de sesión.
-     * @param card Nombre del paso. "track" abre el paso de invitado en la consulta de la solicitud.
+     * @param card Nombre del paso.
      */
     private void show(String card) {
-        String target = TRACK.equals(card) ? GUEST : card;
+        String target = card;
         cards.show(content, target);
         topBack.setVisible(TRAVELER.equals(target));
         switch (target) {
@@ -269,9 +267,6 @@ public class LoginFrame extends JFrame {
                 break;
             case GUEST:
                 getRootPane().setDefaultButton(guestButton);
-                if (TRACK.equals(card)) {
-                    SwingUtilities.invokeLater(trackNumber::requestFocusInWindow);
-                }
                 break;
             default:
                 getRootPane().setDefaultButton(null);
@@ -675,102 +670,52 @@ public class LoginFrame extends JFrame {
 
     /**
      * Entra a la pantalla del viajero (con cuenta o como invitado).
-     * La pantalla principal del viajero todavía no existe; por ahora se avisa.
      * @param traveler Viajero, o null si entra como invitado.
      */
     private void enterAsTraveler(Traveler traveler) {
-        String who = traveler == null ? "invitado" : traveler.getFirstName();
-        JOptionPane.showMessageDialog(this, "Hola, " + who + ".\nLa pantalla del viajero (peajes, tarifas, "
-                + "mapa y asistencia) está en construcción.", "RutaPeaje", JOptionPane.INFORMATION_MESSAGE);
-        show(WELCOME);
+        dispose();
+        new TravelerFrame(traveler).setVisible(true);
     }
 
-    // ------------------------------------------------------------------ Invitado y consulta de la solicitud
+    // ------------------------------------------------------------------ Invitado
 
     private JComponent buildGuest() {
         JPanel top = column();
         top.add(Box.createVerticalStrut(56));
         top.add(left(h1("Entrar como invitado", 34)));
         top.add(Box.createVerticalStrut(14));
-        top.add(left(lead("Sin cuenta puedes consultar peajes, tarifas y rutas, y pedir asistencia en la vía.")));
+        top.add(left(lead("Sin cuenta puedes consultar el mapa de peajes y saber cuánto cuesta tu viaje.")));
         top.add(Box.createVerticalStrut(16));
-        for (String item : new String[]{"Peajes, tarifas y mapa", "Costo de una ruta",
-            "Pedir asistencia y seguirla con su número"}) {
+        for (String item : new String[]{"Mapa de peajes con su ficha y tarifas", "Planificar un viaje y su costo"}) {
             JLabel line = new JLabel("✓   " + item);
             line.setFont(Theme.font(Font.PLAIN, 14));
             line.setForeground(new Color(0x3F3F46));
             line.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
             top.add(left(line));
         }
+        JLabel locked = new JLabel("✕   Pedir asistencia en la vía (necesita una cuenta)");
+        locked.setFont(Theme.font(Font.PLAIN, 14));
+        locked.setForeground(LABEL);
+        locked.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+        top.add(left(locked));
         top.add(Box.createVerticalStrut(20));
         guestButton.addActionListener(e -> enterAsTraveler(null));
         top.add(left(actions(guestButton, "← Volver", () -> show(WELCOME))));
         top.add(Box.createVerticalStrut(24));
         top.add(stretch(divider()));
         top.add(Box.createVerticalStrut(22));
-        JLabel already = new JLabel("¿Ya pediste asistencia?");
+        JLabel already = new JLabel("¿Vas a necesitar asistencia en la vía?");
         already.setFont(Theme.font(Font.BOLD, 15));
         already.setForeground(INK);
         top.add(left(already));
-        addFields(top, trackNumberField, trackPhoneField, 8);
-        top.add(Box.createVerticalStrut(14));
-        top.add(left(link("Consultar estado →", this::trackRequest)));
-        top.add(left(trackError));
-        trackResult.setOpaque(false);
-        trackResult.setVisible(false);
-        top.add(Box.createVerticalStrut(4));
-        top.add(stretch(trackResult));
-        trackNumber.addActionListener(e -> trackRequest());
-        trackPhone.addActionListener(e -> trackRequest());
+        top.add(Box.createVerticalStrut(6));
+        top.add(left(small("Con una cuenta la pides en segundos y ves cómo avanza.")));
+        top.add(Box.createVerticalStrut(10));
+        top.add(left(link("Crear una cuenta →", () -> {
+            selectTravelerTab(REGISTER_TAB);
+            show(TRAVELER);
+        })));
         return page(top, null);
-    }
-
-    private void trackRequest() {
-        trackError.setText(" ");
-        clear(trackNumberField, trackPhoneField);
-        trackResult.setVisible(false);
-        String number = trackNumber.getText().trim();
-        String phone = trackPhone.getText().replaceAll("\\D", "");
-        if (!number.matches("\\d{1,9}")) {
-            trackNumberField.setError("Escribe el número de la solicitud");
-            return;
-        }
-        Async.run(() -> {
-            Assistance a = station.assistances().get(Integer.parseInt(number));
-            String saved = a.getContactPhone() == null ? "" : a.getContactPhone().replaceAll("\\D", "");
-            if (!saved.equals(phone)) {
-                throw new IllegalArgumentException("El número y el teléfono no coinciden");
-            }
-            Toll toll = station.toll(a.getTollId());
-            AssistanceResource resource = a.getResourceId() == null ? null
-                    : station.resources().get(a.getResourceId());
-            return new Object[]{a, toll, resource};
-        }, data -> showTrackResult((Assistance) data[0], (Toll) data[1], (AssistanceResource) data[2]),
-                error -> trackError.setText(error instanceof IllegalArgumentException
-                        ? error.getMessage() : "No se encontró la solicitud " + number));
-    }
-
-    private void showTrackResult(Assistance a, Toll toll, AssistanceResource resource) {
-        trackResult.removeAll();
-        JPanel box = new RoundedCard(SOFT_LINE);
-        box.setLayout(new BorderLayout(0, 6));
-        box.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-        JPanel row = new JPanel(new BorderLayout());
-        row.setOpaque(false);
-        JLabel title = new JLabel("#" + a.getAssistanceId() + " · " + StationTexts.type(a.getType())
-                + (a.getPlate() == null ? "" : " · " + a.getPlate()));
-        title.setFont(Theme.font(Font.BOLD, 14));
-        title.setForeground(INK);
-        row.add(title, BorderLayout.WEST);
-        row.add(StationTexts.statusPill(a.getCurrentStatus()), BorderLayout.EAST);
-        box.add(row, BorderLayout.NORTH);
-        String where = toll == null ? "Peaje " + a.getTollId() : "Peaje " + toll.getName();
-        String who = resource == null ? "Aún sin recurso asignado" : resource.getIdentification() + " asignado";
-        box.add(small(where + " · " + who), BorderLayout.CENTER);
-        trackResult.add(box, BorderLayout.CENTER);
-        trackResult.setVisible(true);
-        trackResult.revalidate();
-        trackResult.repaint();
     }
 
     // ------------------------------------------------------------------ Ayudas de diseño

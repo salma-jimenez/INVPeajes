@@ -189,6 +189,16 @@ public class AssistanceService {
     }
 
     /**
+     * Lista las asistencias que pidió un viajero con cuenta.
+     *
+     * @param travelerId ID del viajero
+     * @return asistencias del viajero, más recientes primero
+     */
+    public List<Assistance> listByTraveler(int travelerId) {
+        return assistanceDAO.findByTraveler(travelerId);
+    }
+
+    /**
      * Lista las asistencias atendidas desde un peaje.
      *
      * @param tollId peaje a filtrar
