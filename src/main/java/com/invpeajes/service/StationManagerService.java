@@ -4,6 +4,7 @@ import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceStatus;
 import com.invpeajes.model.AssistanceType;
+import com.invpeajes.model.BoothActivity;
 import com.invpeajes.model.ResourceAvailability;
 import com.invpeajes.model.StatPeriod;
 import com.invpeajes.model.Toll;
@@ -40,6 +41,7 @@ public class StationManagerService {
     private final AssistanceService assistanceService;
     private final AssistanceResourceService resourceService;
     private final TollService tollService;
+    private final StaffService staffService;
 
     /** Resumen que ve el jefe al iniciar sesión. */
     public static final class Summary {
@@ -96,10 +98,69 @@ public class StationManagerService {
      */
     public StationManagerService(StatisticsDAO statisticsDAO, AssistanceService assistanceService,
                                  AssistanceResourceService resourceService, TollService tollService) {
+        this(statisticsDAO, assistanceService, resourceService, tollService, new StaffService());
+    }
+
+    /**
+     * @param statisticsDAO Consultas de recaudo y asistencias.
+     * @param assistanceService Solicitudes de asistencia.
+     * @param resourceService Recursos de asistencia.
+     * @param tollService Peajes y casetas.
+     * @param staffService Empleados (operadores del peaje y contraseña propia).
+     */
+    public StationManagerService(StatisticsDAO statisticsDAO, AssistanceService assistanceService,
+                                 AssistanceResourceService resourceService, TollService tollService,
+                                 StaffService staffService) {
         this.statisticsDAO = statisticsDAO;
         this.assistanceService = assistanceService;
         this.resourceService = resourceService;
         this.tollService = tollService;
+        this.staffService = staffService;
+    }
+
+    /** @return Servicio de empleados (operadores del peaje y contraseña propia). */
+    public StaffService staff() {
+        return staffService;
+    }
+
+    /**
+     * Cómo van hoy las casetas del peaje: cobros, recaudo y quién hizo el último cobro.
+     * @param tollId ID del peaje.
+     * @return Una fila por caseta.
+     */
+    public List<BoothActivity> booths(int tollId) {
+        return statisticsDAO.boothActivity(tollId, LocalDate.now());
+    }
+
+    /**
+     * @param tollId ID del peaje.
+     * @param limit Cuántos.
+     * @return Últimos cobros del peaje.
+     */
+    public List<BoothActivity.Charge> recentCharges(int tollId, int limit) {
+        return statisticsDAO.recentCharges(tollId, limit);
+    }
+
+    /**
+     * @param tollId ID del peaje.
+     * @return Vehículos y recaudo de ayer, desde las 00:00 hasta la misma hora de ahora.
+     */
+    public Total yesterdayUntilNow(int tollId) {
+        LocalDateTime now = LocalDateTime.now();
+        return statisticsDAO.totalBetween(tollId, now.toLocalDate().minusDays(1).atStartOfDay(), now.minusDays(1));
+    }
+
+    /**
+     * Cambia el estado de una caseta del peaje (ACTIVA, MANTENIMIENTO o INACTIVA).
+     * @param tollId Peaje del jefe.
+     * @param booth Caseta.
+     * @param status Estado nuevo.
+     */
+    public void changeBoothStatus(int tollId, com.invpeajes.model.TollBooth booth, String status) {
+        if (booth.getTollId() != tollId) {
+            throw new ValidationException("La caseta no es de tu peaje");
+        }
+        tollService.changeBoothStatus(booth.getBoothId(), status);
     }
 
     /** @return Servicio de asistencias (asignar, cambiar estado, cancelar). */
