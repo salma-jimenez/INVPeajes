@@ -66,10 +66,10 @@ public class TripPanel extends JPanel {
     /** Con ruta por carretera: distancia máxima del peaje a la vía, en metros. */
     private static final double ROAD_MATCH_METERS = 300;
     private static final String NOTE_INITIAL = "<html>La ruta se calcula por carretera con OpenStreetMap."
-            + " Si no hay internet, se usa una ruta aproximada en línea recta.</html>";
+            + " Si el servicio de rutas no responde, se usa una ruta aproximada en línea recta.</html>";
     private static final String NOTE_ROAD = "<html>Ruta por carretera calculada con OpenStreetMap (OSRM)."
             + " La duración es estimada y no tiene en cuenta el tráfico.</html>";
-    private static final String NOTE_APPROX = "<html>No se pudo obtener la ruta por carretera (¿sin internet?):"
+    private static final String NOTE_APPROX = "<html>El servicio de rutas no respondió:"
             + " se tomaron los peajes cercanos a la línea entre origen y destino, así que el resultado"
             + " es aproximado.</html>";
     private static final int RADIUS = 12;
@@ -326,7 +326,7 @@ public class TripPanel extends JPanel {
         calculate.setText("Calculando...");
         Async.run(() -> {
             Map<Integer, BigDecimal> prices = service.pricesFor(cat.getCategoryId());
-            // Primero la ruta real por carretera; si no hay internet, el cálculo aproximado
+            // Primero la ruta real por carretera; si el servicio no responde, el cálculo aproximado
             RouteService.RoadRoute road = RouteService.findRoute(from.getLatitude(), from.getLongitude(),
                     to.getLatitude(), to.getLongitude());
             if (road != null) {
