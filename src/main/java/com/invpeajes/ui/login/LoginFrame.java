@@ -5,7 +5,9 @@ import com.invpeajes.model.TollBooth;
 import com.invpeajes.model.Traveler;
 import com.invpeajes.service.AuthService;
 import com.invpeajes.service.CashierService;
+import com.invpeajes.service.AdminService;
 import com.invpeajes.service.StationManagerService;
+import com.invpeajes.ui.admin.AdminFrame;
 import com.invpeajes.ui.cashier.CashierFrame;
 import com.invpeajes.ui.common.Async;
 import com.invpeajes.ui.common.Theme;
@@ -69,7 +71,7 @@ import javax.swing.text.View;
  *   <li><b>Bienvenida</b>: "Soy viajero" o "Soy empleado", y el enlace para entrar como invitado.</li>
  *   <li><b>Empleados</b>: cédula y contraseña. Según el cargo, el operador de caseta escoge su caseta
  *       y abre la Caja; el jefe de estación ve el resumen de su peaje y entra a su panel; el
- *       administrador ve su saludo (su panel está en construcción).</li>
+ *       administrador ve su saludo y entra a Administración (solo los peajes de su entidad).</li>
  *   <li><b>Viajeros</b>: iniciar sesión y crear cuenta en pestañas.</li>
  *   <li><b>Invitado</b>: entrar sin cuenta para ver el mapa de peajes y planificar viajes. Para
  *       pedir asistencia hace falta una cuenta (se crea desde la misma pantalla del viajero).</li>
@@ -105,6 +107,7 @@ public class LoginFrame extends JFrame {
     private final AuthService auth;
     private final CashierService cashier;
     private final StationManagerService station;
+    private final AdminService adminService;
     private final Preferences prefs = Preferences.userNodeForPackage(LoginFrame.class);
 
     private final CardLayout cards = new CardLayout();
@@ -184,10 +187,23 @@ public class LoginFrame extends JFrame {
      * @param station Servicio del jefe de estación (resumen y consulta de solicitudes).
      */
     public LoginFrame(AuthService auth, CashierService cashier, StationManagerService station) {
+        this(auth, cashier, station, new AdminService());
+    }
+
+    /**
+     * Crea la ventana con los servicios indicados, incluido el del administrador.
+     * @param auth Servicio de inicio de sesión.
+     * @param cashier Servicio de la caja (casetas y turno del operador).
+     * @param station Servicio del jefe de estación (resumen y consulta de solicitudes).
+     * @param adminService Servicio del administrador (su entidad y su panel).
+     */
+    public LoginFrame(AuthService auth, CashierService cashier, StationManagerService station,
+                      AdminService adminService) {
         super("RutaPeaje Colombia");
         this.auth = auth;
         this.cashier = cashier;
         this.station = station;
+        this.adminService = adminService;
 
         content.setOpaque(false);
         content.add(buildWelcome(), WELCOME);
@@ -477,6 +493,9 @@ public class LoginFrame extends JFrame {
             if (employee != null && AuthService.ROLE_MANAGER.equals(employee.getRole())) {
                 dispose();
                 new StationFrame(station, employee).setVisible(true);
+            } else if (employee != null && AuthService.ROLE_ADMIN.equals(employee.getRole())) {
+                dispose();
+                new AdminFrame(adminService, employee).setVisible(true);
             }
         });
         return page(top, greetNote);
@@ -487,17 +506,26 @@ public class LoginFrame extends JFrame {
         greetBody.removeAll();
         boolean admin = AuthService.ROLE_ADMIN.equals(session.getRole());
         if (admin) {
-            greetRole.setText("Administrador · Todos los peajes");
+            greetRole.setText("Administrador · …");
             JPanel list = column();
             list.add(left(overline("DESDE ADMINISTRACIÓN GESTIONAS")));
             list.add(Box.createVerticalStrut(6));
-            for (String item : new String[]{"Peajes", "Tarifas por categoría", "Casetas", "Empleados"}) {
-                list.add(stretch(summaryRow(item, valueLabel("Registrar · modificar · eliminar", LABEL, false))));
+            String[][] items = {{"Peajes y tarifas", "registrar · editar"}, {"Casetas", "agregar · forma de pago"},
+                {"Jefes de estación", "registrar · editar"}, {"Mapa y pendientes", "de tus peajes"}};
+            for (String[] item : items) {
+                list.add(stretch(summaryRow(item[0], valueLabel(item[1], LABEL, false))));
             }
             greetBody.add(list, BorderLayout.CENTER);
             greetButton.setText("Ir a Administración");
             greetButton.setEnabled(false);
-            greetNote.setText("El panel de Administración está en construcción.");
+            greetNote.setText("Solo ves y editas los peajes de tu entidad.");
+            Async.run(() -> adminService.admin(session.getOperatorId()), user -> {
+                greetRole.setText("Administrador · " + com.invpeajes.ui.common.Labels.entityLong(user.getEntity()));
+                greetButton.setEnabled(true);
+            }, error -> {
+                greetRole.setText("Administrador · sin entidad asignada");
+                greetNote.setText(error.getMessage());
+            });
         } else {
             greetRole.setText("Jefe de estación · Peaje " + session.getTollName());
             JLabel unattended = valueLabel("…", Theme.DANGER, true);

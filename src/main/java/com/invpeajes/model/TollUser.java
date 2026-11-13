@@ -23,6 +23,9 @@ public class TollUser {
     private String position;
     private LocalDate hireDate;
     private Integer tollId;
+    private boolean active = true;
+    private String entity;
+    private boolean defaultPassword;
  
     /**
      * Crea un usuario vacío.
@@ -223,6 +226,48 @@ public class TollUser {
         this.tollId = tollId;
     }
  
+    /**
+     * @return true si puede iniciar sesión (columna ACTIVO = 'S')
+     */
+    public boolean isActive() {
+        return active;
+    }
+ 
+    /**
+     * @param active true si puede iniciar sesión
+     */
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+ 
+    /**
+     * @return entidad del administrador (ANI, INVIAS...), o {@code null} si no es administrador
+     */
+    public String getEntity() {
+        return entity;
+    }
+ 
+    /**
+     * @param entity entidad del administrador (mismos valores de PEAJE.NIVEL)
+     */
+    public void setEntity(String entity) {
+        this.entity = entity;
+    }
+ 
+    /**
+     * @return true si su contraseña todavía es su propia cédula (la inicial)
+     */
+    public boolean isDefaultPassword() {
+        return defaultPassword;
+    }
+ 
+    /**
+     * @param defaultPassword true si su contraseña todavía es su propia cédula
+     */
+    public void setDefaultPassword(boolean defaultPassword) {
+        this.defaultPassword = defaultPassword;
+    }
+ 
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -249,4 +294,4 @@ public class TollUser {
                 + " | Peaje: " + (tollId == null ? "-" : tollId);
     }
 }
- 
+ 

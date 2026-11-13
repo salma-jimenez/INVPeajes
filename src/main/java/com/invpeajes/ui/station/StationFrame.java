@@ -4,31 +4,25 @@ import com.invpeajes.model.CashierSession;
 import com.invpeajes.model.Toll;
 import com.invpeajes.service.StationManagerService;
 import com.invpeajes.ui.common.Async;
-import com.invpeajes.ui.common.FlatButton;
-import com.invpeajes.ui.common.Pill;
+import com.invpeajes.ui.common.PasswordDialog;
+import com.invpeajes.ui.common.SideNav;
+import com.invpeajes.ui.common.SideNav.NavItem;
 import com.invpeajes.ui.common.Theme;
 import com.invpeajes.ui.login.LoginFrame;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.GridLayout;
-import java.awt.RenderingHints;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -38,18 +32,19 @@ import javax.swing.Timer;
 import javax.swing.WindowConstants;
 
 /**
- * Ventana de la sesión del jefe de estación: barra lateral con sus datos y tres apartados,
- * "Centro de asistencia", "Recursos de asistencia" y "Estadísticas del peaje".
+ * Ventana de la sesión del jefe de estación: barra lateral con sus datos y cinco apartados,
+ * "Centro de asistencia", "Recursos de asistencia", "Estadísticas del peaje", "Casetas del peaje"
+ * y "Empleados del peaje". Abajo de la barra puede cambiar su contraseña.
  *
- * El Centro de asistencia y los Recursos se actualizan solos cada {@link #REFRESH_SECONDS}
- * segundos, para que aparezcan las solicitudes nuevas de los viajeros.
+ * El Centro de asistencia, los Recursos y las Casetas se actualizan solos cada
+ * {@link #REFRESH_SECONDS} segundos, para que aparezcan las solicitudes y los cobros nuevos.
  *
  * @author Salomejimenez
- * @version 1.0
+ * @version 2.0
  */
 public class StationFrame extends JFrame {
 
-    /** Cada cuántos segundos se recargan las solicitudes y los recursos. */
+    /** Cada cuántos segundos se recargan las solicitudes, los recursos y las casetas. */
     public static final int REFRESH_SECONDS = 15;
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("dd/MM/yyyy  HH:mm:ss");
@@ -57,6 +52,8 @@ public class StationFrame extends JFrame {
     private static final String CENTER = "center";
     private static final String RESOURCES = "resources";
     private static final String STATISTICS = "statistics";
+    private static final String BOOTHS = "booths";
+    private static final String OPERATORS = "operators";
 
     private final CashierSession session;
     private final LocalDateTime openedAt = LocalDateTime.now();
@@ -65,12 +62,13 @@ public class StationFrame extends JFrame {
     private final JLabel pageTitle = new JLabel("Centro de asistencia");
     private final JLabel pageSubtitle = Theme.muted(" ");
     private final JLabel updated = new JLabel(" ", SwingConstants.RIGHT);
-    private final NavItem centerNav = new NavItem("Centro de asistencia");
-    private final NavItem resourcesNav = new NavItem("Recursos de asistencia");
-    private final NavItem statisticsNav = new NavItem("Estadísticas del peaje");
+    private final Map<String, NavItem> nav = new LinkedHashMap<>();
+    private final Map<String, String> titles = new LinkedHashMap<>();
     private final AssistanceCenterPanel centerPanel;
     private final ResourcesPanel resourcesPanel;
     private final StatisticsPanel statisticsPanel;
+    private final BoothsPanel boothsPanel;
+    private final OperatorsPanel operatorsPanel;
     private final Timer clockTimer;
     private final Timer refreshTimer;
     private String current = CENTER;
@@ -90,12 +88,26 @@ public class StationFrame extends JFrame {
             centerPanel.select(id);
         }, this::markRefreshed);
         statisticsPanel = new StatisticsPanel(service, session);
+        boothsPanel = new BoothsPanel(service, session, this::markRefreshed);
+        operatorsPanel = new OperatorsPanel(service, session);
         cardPanel.add(centerPanel, CENTER);
         cardPanel.add(resourcesPanel, RESOURCES);
         cardPanel.add(statisticsPanel, STATISTICS);
-        centerNav.onClick(() -> show(CENTER));
-        resourcesNav.onClick(() -> show(RESOURCES));
-        statisticsNav.onClick(() -> show(STATISTICS));
+        cardPanel.add(boothsPanel, BOOTHS);
+        cardPanel.add(operatorsPanel, OPERATORS);
+
+        SideNav side = new SideNav();
+        addPage(side, CENTER, "Centro de asistencia");
+        addPage(side, RESOURCES, "Recursos de asistencia");
+        addPage(side, STATISTICS, "Estadísticas del peaje");
+        addPage(side, BOOTHS, "Casetas del peaje");
+        addPage(side, OPERATORS, "Empleados del peaje");
+        side.addInfo("JEFE DE ESTACIÓN", session.getOperatorName());
+        side.addInfo("PEAJE", session.getTollName());
+        side.addInfo("SESIÓN DESDE", openedAt.format(HOUR));
+        side.addBottomLink("Cambiar contraseña",
+                () -> PasswordDialog.open(this, service.staff(), session.getOperatorId()));
+        side.addBottomButton("Cerrar sesión", this::logout);
 
         JLabel clock = new JLabel(" ", SwingConstants.RIGHT);
         clock.setFont(Theme.font(Font.PLAIN, 13));
@@ -115,7 +127,7 @@ public class StationFrame extends JFrame {
         content.add(cardPanel, BorderLayout.CENTER);
 
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(buildSidebar(), BorderLayout.WEST);
+        getContentPane().add(side, BorderLayout.WEST);
         getContentPane().add(content, BorderLayout.CENTER);
         show(CENTER);
 
@@ -133,6 +145,11 @@ public class StationFrame extends JFrame {
         setLocationRelativeTo(null);
     }
 
+    private void addPage(SideNav side, String page, String title) {
+        titles.put(page, title);
+        nav.put(page, side.addItem(title, () -> show(page)));
+    }
+
     private void setToll(Toll toll) {
         centerPanel.setToll(toll);
         pageSubtitle.setText("Peaje " + session.getTollName()
@@ -142,24 +159,33 @@ public class StationFrame extends JFrame {
     private void show(String page) {
         current = page;
         cards.show(cardPanel, page);
-        centerNav.setActive(CENTER.equals(page));
-        resourcesNav.setActive(RESOURCES.equals(page));
-        statisticsNav.setActive(STATISTICS.equals(page));
-        pageTitle.setText(CENTER.equals(page) ? "Centro de asistencia"
-                : RESOURCES.equals(page) ? "Recursos de asistencia" : "Estadísticas del peaje");
-        updated.setVisible(!STATISTICS.equals(page));
+        nav.forEach((name, item) -> item.setActive(name.equals(page)));
+        pageTitle.setText(titles.get(page));
+        updated.setVisible(CENTER.equals(page) || RESOURCES.equals(page) || BOOTHS.equals(page));
         refreshCurrent();
     }
 
     private void refreshCurrent() {
-        if (CENTER.equals(current)) {
-            centerPanel.refresh();
-        } else if (RESOURCES.equals(current)) {
-            resourcesPanel.refresh();
-            centerPanel.refreshCountsOnly();
-        } else {
-            statisticsPanel.refresh();
-            centerPanel.refreshCountsOnly();
+        switch (current) {
+            case CENTER:
+                centerPanel.refresh();
+                break;
+            case RESOURCES:
+                resourcesPanel.refresh();
+                centerPanel.refreshCountsOnly();
+                break;
+            case BOOTHS:
+                boothsPanel.refresh();
+                centerPanel.refreshCountsOnly();
+                break;
+            case OPERATORS:
+                operatorsPanel.refresh();
+                centerPanel.refreshCountsOnly();
+                break;
+            default:
+                statisticsPanel.refresh();
+                centerPanel.refreshCountsOnly();
+                break;
         }
     }
 
@@ -180,7 +206,7 @@ public class StationFrame extends JFrame {
     }
 
     private void setBadge(int unattended) {
-        centerNav.setBadge(unattended);
+        nav.get(CENTER).setBadge(unattended);
     }
 
     private void logout() {
@@ -193,44 +219,6 @@ public class StationFrame extends JFrame {
             dispose();
             LoginFrame.open();
         }
-    }
-
-    private JPanel buildSidebar() {
-        JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setBackground(Theme.SIDEBAR);
-        sidebar.setPreferredSize(new Dimension(260, 0));
-        sidebar.setBorder(BorderFactory.createEmptyBorder(26, 14, 18, 14));
-
-        JPanel top = new JPanel();
-        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-        top.setOpaque(false);
-        top.add(indent(label("RutaPeaje", Font.BOLD, 26, Color.WHITE)));
-        top.add(indent(label("Colombia", Font.PLAIN, 14, Theme.SIDEBAR_MUTED)));
-        top.add(Box.createVerticalStrut(30));
-        top.add(centerNav);
-        top.add(Box.createVerticalStrut(6));
-        top.add(resourcesNav);
-        top.add(Box.createVerticalStrut(6));
-        top.add(statisticsNav);
-        top.add(Box.createVerticalStrut(26));
-        top.add(info("JEFE DE ESTACIÓN", session.getOperatorName()));
-        top.add(info("PEAJE", session.getTollName()));
-        top.add(info("SESIÓN DESDE", openedAt.format(HOUR)));
-
-        JPanel bottom = new JPanel(new BorderLayout(0, 14));
-        bottom.setOpaque(false);
-        FlatButton close = new FlatButton("Cerrar sesión");
-        close.setColors(Theme.SIDEBAR, new Color(0x1B3A78), Color.WHITE, Theme.SIDEBAR_MUTED);
-        close.addActionListener(e -> logout());
-        JLabel footer = new JLabel("<html>Conectando caminos,<br>impulsando el país</html>");
-        footer.setFont(Theme.font(Font.PLAIN, 12));
-        footer.setForeground(Theme.SIDEBAR_MUTED);
-        bottom.add(close, BorderLayout.NORTH);
-        bottom.add(footer, BorderLayout.SOUTH);
-
-        sidebar.add(top, BorderLayout.NORTH);
-        sidebar.add(bottom, BorderLayout.SOUTH);
-        return sidebar;
     }
 
     private JPanel buildTopBar(JLabel clock) {
@@ -253,103 +241,5 @@ public class StationFrame extends JFrame {
         bar.add(left, BorderLayout.WEST);
         bar.add(right, BorderLayout.EAST);
         return bar;
-    }
-
-    private static JLabel label(String text, int style, int size, Color color) {
-        JLabel label = new JLabel(text);
-        label.setFont(Theme.font(style, size));
-        label.setForeground(color);
-        return label;
-    }
-
-    private static JComponent indent(JComponent c) {
-        c.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0));
-        c.setAlignmentX(LEFT_ALIGNMENT);
-        return c;
-    }
-
-    private static JPanel info(String caption, String value) {
-        JPanel panel = new JPanel(new GridLayout(2, 1));
-        panel.setOpaque(false);
-        panel.setAlignmentX(LEFT_ALIGNMENT);
-        panel.setBorder(BorderFactory.createEmptyBorder(0, 10, 14, 0));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 56));
-        panel.add(label(caption, Font.BOLD, 11, Theme.SIDEBAR_MUTED));
-        panel.add(label(value, Font.PLAIN, 14, Theme.SIDEBAR_TEXT));
-        return panel;
-    }
-
-    /** Opción del menú lateral, con un contador rojo opcional a la derecha. */
-    private static final class NavItem extends JPanel {
-        private final JLabel text;
-        private final Pill badge = new Pill("0", Theme.DANGER, Color.WHITE);
-        private boolean active;
-        private boolean hover;
-
-        NavItem(String label) {
-            super(new BorderLayout());
-            setOpaque(false);
-            setAlignmentX(LEFT_ALIGNMENT);
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            setPreferredSize(new Dimension(232, 40));
-            setBorder(BorderFactory.createEmptyBorder(0, 16, 0, 12));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            text = new JLabel(label);
-            add(text, BorderLayout.CENTER);
-            JPanel badgeBox = new JPanel(new java.awt.GridBagLayout());
-            badgeBox.setOpaque(false);
-            badgeBox.add(badge);
-            badge.setVisible(false);
-            add(badgeBox, BorderLayout.EAST);
-            setActive(false);
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    hover = true;
-                    repaint();
-                }
-
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    hover = false;
-                    repaint();
-                }
-            });
-        }
-
-        void onClick(Runnable action) {
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    action.run();
-                }
-            });
-        }
-
-        void setActive(boolean value) {
-            active = value;
-            text.setFont(Theme.font(value ? Font.BOLD : Font.PLAIN, 15));
-            text.setForeground(value ? Color.WHITE : Theme.SIDEBAR_TEXT);
-            repaint();
-        }
-
-        void setBadge(int count) {
-            badge.setText(String.valueOf(count));
-            badge.setVisible(count > 0);
-            revalidate();
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            if (active || hover) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(active ? Theme.PRIMARY : new Color(0x1B3A78));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.dispose();
-            }
-            super.paintComponent(g);
-        }
     }
 }

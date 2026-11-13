@@ -20,6 +20,7 @@ public class StatTile extends JPanel {
     private final Color accent;
     private final JLabel value = new JLabel(" ");
     private final JLabel detail = new JLabel(" ");
+    private final JLabel titleLabel;
 
     /**
      * @param title Título (ej. "Sin atender").
@@ -39,7 +40,8 @@ public class StatTile extends JPanel {
         detail.setForeground(Theme.MUTED);
         JPanel text = new JPanel(new GridLayout(0, 1, 0, 1));
         text.setOpaque(false);
-        text.add(Theme.muted(title));
+        titleLabel = Theme.muted(title);
+        text.add(titleLabel);
         text.add(value);
         text.add(detail);
         add(text, BorderLayout.CENTER);
@@ -53,6 +55,14 @@ public class StatTile extends JPanel {
     public void setValue(String text, String note) {
         value.setText(text);
         detail.setText(note == null || note.isEmpty() ? " " : note);
+    }
+
+    /**
+     * Cambia el título (ej. "Recaudado en noviembre").
+     * @param title Título nuevo.
+     */
+    public void setTitleText(String title) {
+        titleLabel.setText(title);
     }
 
     /**

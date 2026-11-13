@@ -2,7 +2,9 @@ package com.invpeajes.ui.cashier;
 
 import com.invpeajes.model.CashierSession;
 import com.invpeajes.service.CashierService;
+import com.invpeajes.service.StaffService;
 import com.invpeajes.ui.common.FlatButton;
+import com.invpeajes.ui.common.PasswordDialog;
 import com.invpeajes.ui.common.Theme;
 import com.invpeajes.ui.login.LoginFrame;
 import java.awt.BorderLayout;
@@ -151,7 +153,20 @@ public class CashierFrame extends JFrame {
         JLabel footer = new JLabel("<html>Conectando caminos,<br>impulsando el país</html>");
         footer.setFont(Theme.font(Font.PLAIN, 12));
         footer.setForeground(Theme.SIDEBAR_MUTED);
-        bottom.add(close, BorderLayout.NORTH);
+        JLabel password = sidebarLabel("Cambiar contraseña", Font.BOLD, 13, Theme.SIDEBAR_TEXT);
+        password.setHorizontalAlignment(JLabel.CENTER);
+        password.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        password.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                PasswordDialog.open(CashierFrame.this, new StaffService(), session.getOperatorId());
+            }
+        });
+        JPanel actions = new JPanel(new java.awt.GridLayout(0, 1, 0, 8));
+        actions.setOpaque(false);
+        actions.add(password);
+        actions.add(close);
+        bottom.add(actions, BorderLayout.NORTH);
         bottom.add(footer, BorderLayout.SOUTH);
 
         sidebar.add(top, BorderLayout.NORTH);

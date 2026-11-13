@@ -234,6 +234,23 @@ public class TollService {
     }
 
     /**
+     * Cambia la forma de pago, el sentido o el estado de una caseta. Igual que al agregarla, solo
+     * puede quedar ACTIVA si su peaje está OPERATIVO.
+     *
+     * @param booth Caseta con los datos nuevos (con su ID).
+     * @throws IllegalArgumentException Si algún dato no es válido.
+     * @throws IllegalStateException Si se intenta activar en un peaje que no está operativo.
+     * @throws NoSuchElementException Si la caseta no existe.
+     */
+    public void updateBooth(TollBooth booth) {
+        validateBooth(booth);
+        validateActivation(findToll(booth.getTollId()), booth.getStatus());
+        if (!boothDAO.update(booth)) {
+            throw new NoSuchElementException("No existe la caseta " + booth.getBoothId());
+        }
+    }
+
+    /**
      * Elimina una caseta.
      * @param boothId ID de la caseta.
      * @throws NoSuchElementException Si la caseta no existe.
@@ -325,4 +342,4 @@ public class TollService {
     private NoSuchElementException tollNotFound(int tollId) {
         return new NoSuchElementException("No existe el peaje " + tollId);
     }
-}
+}
