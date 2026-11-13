@@ -119,6 +119,8 @@ public class TollMap extends JPanel {
                         c.setBounds(12, 12, d.width, d.height);
                     } else if ("legend".equals(c.getName())) {
                         c.setBounds(12, getHeight() - d.height - 12, d.width, d.height);
+                    } else if ("attribution".equals(c.getName())) {
+                        c.setBounds(getWidth() - d.width, getHeight() - d.height, d.width, d.height);
                     }
                 }
             }
@@ -184,7 +186,18 @@ public class TollMap extends JPanel {
 
         map.add(zoomButtons(map));
         map.add(legend());
+        map.add(attribution());
         return map;
+    }
+
+    /** Crédito del mapa, obligatorio al usar las imágenes de OpenStreetMap. */
+    private JLabel attribution() {
+        JLabel credit = TravelerUi.label("© colaboradores de OpenStreetMap", Font.PLAIN, 10, Theme.TEXT);
+        credit.setName("attribution");
+        credit.setOpaque(true);
+        credit.setBackground(Color.WHITE);
+        credit.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+        return credit;
     }
 
     private JPanel zoomButtons(JXMapViewer map) {
@@ -339,7 +352,8 @@ public class TollMap extends JPanel {
     }
 
     /**
-     * Dibuja un viaje como una línea entre los puntos (origen, peajes y destino).
+     * Dibuja un viaje uniendo los puntos en orden. Con los puntos de la vía (de
+     * {@code RouteService}) la línea sigue la carretera; con pocos puntos queda en rectas.
      *
      * @param path puntos en orden; vacía para quitar la línea
      */
