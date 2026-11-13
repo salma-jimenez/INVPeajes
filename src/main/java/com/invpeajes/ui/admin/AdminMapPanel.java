@@ -3,6 +3,8 @@ package com.invpeajes.ui.admin;
 import com.invpeajes.model.Toll;
 import com.invpeajes.service.AdminService;
 import com.invpeajes.service.AdminService.ClosePair;
+import com.invpeajes.service.RouteService;
+import com.invpeajes.ui.common.Async;
 import com.invpeajes.ui.common.Forms;
 import com.invpeajes.ui.common.Labels;
 import com.invpeajes.ui.common.Theme;
@@ -14,7 +16,9 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
@@ -28,8 +32,9 @@ import org.jxmapviewer.viewer.GeoPosition;
 /**
  * "Mapa" del administrador: el mismo mapa del viajero ({@link TollMap}) con los peajes de su
  * entidad (o todos, solo para ver) y a la derecha los "Peajes muy cercanos": pares de peajes de una
- * misma ruta que están a menos de la distancia escogida. Al escoger un par, el mapa los une con
- * una línea; al escoger un peaje propio en el mapa, se abre para editarlo.
+ * misma ruta que están a menos de la distancia escogida. Al escoger un par, el mapa los une por
+ * la carretera (o en línea recta si no hay internet) y muestra los km por vía; al escoger un peaje
+ * propio en el mapa, se abre para editarlo.
  *
  * @author Salomejimenez
  * @version 1.0
@@ -45,6 +50,8 @@ public class AdminMapPanel extends JPanel implements AdminPage {
     private final JPanel pairs = new JPanel();
     private final JLabel pairsNote = Theme.muted(" ");
     private AdminContext context;
+    /** Cuenta las rutas pedidas, para ignorar una respuesta que llega cuando ya se escogió otra cosa. */
+    private int routeRequest;
 
     /**
      * @param openToll Qué hacer al escoger un peaje propio en el mapa (abrirlo en Peajes).
@@ -114,7 +121,7 @@ public class AdminMapPanel extends JPanel implements AdminPage {
      * @param toll Peaje.
      */
     public void focus(Toll toll) {
-        map.showRoute(List.of());
+        clearRoute();
         map.select(toll, true);
     }
 
@@ -123,7 +130,7 @@ public class AdminMapPanel extends JPanel implements AdminPage {
             return;
         }
         map.showTolls(MINE.equals(scope.getSelectedItem()) ? context.getMine() : context.getCatalog().getTolls());
-        map.showRoute(List.of());
+        clearRoute();
         map.fitAll();
     }
 
@@ -168,11 +175,43 @@ public class AdminMapPanel extends JPanel implements AdminPage {
         row.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                map.showRoute(List.of(new GeoPosition(p.getFirst().getLatitude(), p.getFirst().getLongitude()),
-                        new GeoPosition(p.getSecond().getLatitude(), p.getSecond().getLongitude())));
+                showPairRoute(p, km);
                 map.select(p.getFirst(), false);
             }
         });
         return row;
+    }
+
+    /**
+     * Une los dos peajes del par: primero en línea recta (al instante) y, cuando llega la ruta
+     * por carretera, la cambia por esa y muestra los km por vía en la fila.
+     */
+    private void showPairRoute(ClosePair p, JLabel km) {
+        Toll a = p.getFirst();
+        Toll b = p.getSecond();
+        map.showRoute(List.of(new GeoPosition(a.getLatitude(), a.getLongitude()),
+                new GeoPosition(b.getLatitude(), b.getLongitude())));
+        int request = ++routeRequest;
+        Async.run(() -> RouteService.findRoute(a.getLatitude(), a.getLongitude(), b.getLatitude(), b.getLongitude()),
+                road -> {
+                    if (road == null || request != routeRequest) {
+                        return; // sin internet se queda la línea recta; o ya se escogió otro par
+                    }
+                    List<GeoPosition> path = new ArrayList<>();
+                    for (double[] point : road.getPoints()) {
+                        path.add(new GeoPosition(point[0], point[1]));
+                    }
+                    map.showRoute(path);
+                    km.setText(String.format(Locale.ROOT, "<html><div style='text-align:right'>%.1f km<br>"
+                            + "<span style='font-size:9px;color:#6B7280'>%.1f km por vía</span></div></html>",
+                            p.getKm(), road.getDistanceKm()).replace('.', ','));
+                },
+                error -> { });
+    }
+
+    /** Quita la línea del mapa y descarta una ruta que todavía no ha llegado. */
+    private void clearRoute() {
+        routeRequest++;
+        map.showRoute(List.of());
     }
 }

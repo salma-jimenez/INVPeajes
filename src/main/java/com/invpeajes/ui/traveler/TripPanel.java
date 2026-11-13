@@ -2,6 +2,7 @@ package com.invpeajes.ui.traveler;
 
 import com.invpeajes.model.Toll;
 import com.invpeajes.model.VehicleCategory;
+import com.invpeajes.service.RouteService;
 import com.invpeajes.service.TravelerService;
 import com.invpeajes.service.TravelerService.Catalog;
 import com.invpeajes.service.TravelerService.TripPlan;
@@ -57,8 +58,20 @@ import org.jxmapviewer.viewer.GeoPosition;
  */
 public class TripPanel extends JPanel {
 
-    /** Distancia máxima a la línea del viaje para que un peaje cuente como "del camino". */
+    /**
+     * Sin ruta por carretera: distancia máxima a la línea recta origen–destino para que un
+     * peaje cuente como "del camino".
+     */
     private static final double CORRIDOR_KM = 25;
+    /** Con ruta por carretera: distancia máxima del peaje a la vía, en metros. */
+    private static final double ROAD_MATCH_METERS = 300;
+    private static final String NOTE_INITIAL = "<html>La ruta se calcula por carretera con OpenStreetMap."
+            + " Si el servicio de rutas no responde, se usa una ruta aproximada en línea recta.</html>";
+    private static final String NOTE_ROAD = "<html>Ruta por carretera calculada con OpenStreetMap (OSRM)."
+            + " La duración es estimada y no tiene en cuenta el tráfico.</html>";
+    private static final String NOTE_APPROX = "<html>El servicio de rutas no respondió:"
+            + " se tomaron los peajes cercanos a la línea entre origen y destino, así que el resultado"
+            + " es aproximado.</html>";
     private static final int RADIUS = 12;
 
     private final TravelerService service;
@@ -79,6 +92,7 @@ public class TripPanel extends JPanel {
     // Itinerario
     private final JPanel itinerary = new JPanel();
     private final JLabel note = label(" ", Font.PLAIN, 12, Theme.MUTED);
+    private final JLabel methodNote = label(NOTE_INITIAL, Font.PLAIN, 11, Theme.MUTED);
     private final List<StopRow> rows = new ArrayList<>();
 
     // Ficha flotante del peaje escogido
@@ -191,9 +205,7 @@ public class TripPanel extends JPanel {
         notes.setLayout(new BoxLayout(notes, BoxLayout.Y_AXIS));
         notes.setOpaque(false);
         notes.add(left(note));
-        notes.add(left(label("<html>El sistema no tiene el trazado de las carreteras: toma los peajes cercanos"
-                + " a la línea entre origen y destino, así que el resultado es aproximado.</html>",
-                Font.PLAIN, 11, Theme.MUTED)));
+        notes.add(left(methodNote));
 
         JPanel panel = new JPanel(new BorderLayout(0, 6));
         panel.setOpaque(false);
@@ -314,6 +326,12 @@ public class TripPanel extends JPanel {
         calculate.setText("Calculando...");
         Async.run(() -> {
             Map<Integer, BigDecimal> prices = service.pricesFor(cat.getCategoryId());
+            // Primero la ruta real por carretera; si el servicio no responde, el cálculo aproximado
+            RouteService.RoadRoute road = RouteService.findRoute(from.getLatitude(), from.getLongitude(),
+                    to.getLatitude(), to.getLongitude());
+            if (road != null) {
+                return TravelerService.planTripOnRoad(catalog.getTolls(), prices, road, ROAD_MATCH_METERS, routeId);
+            }
             return TravelerService.planTrip(catalog.getTolls(), prices, from.getLatitude(), from.getLongitude(),
                     to.getLatitude(), to.getLongitude(), CORRIDOR_KM, routeId);
         }, result -> {
@@ -335,21 +353,38 @@ public class TripPanel extends JPanel {
         summaryTotal.setText(Theme.money(result.getTotal()));
         summaryCount.setText("<html><b style='color:#ffffff'>" + n + "</b> " + (n == 1 ? "peaje" : "peajes")
                 + "</html>");
-        summaryKm.setText("<html>≈ <b style='color:#ffffff'>" + TravelerUi.km(result.getDistanceKm())
-                + "</b></html>");
+        if (result.isOnRoad()) {
+            summaryKm.setText("<html><b style='color:#ffffff'>" + TravelerUi.km(result.getDistanceKm())
+                    + "</b> · " + result.getRoad().durationText() + "</html>");
+            methodNote.setText(NOTE_ROAD);
+        } else {
+            summaryKm.setText("<html>≈ <b style='color:#ffffff'>" + TravelerUi.km(result.getDistanceKm())
+                    + "</b></html>");
+            methodNote.setText(NOTE_APPROX);
+        }
         note.setText(result.getWithoutRate() == 0 ? " "
                 : "<html>" + result.getWithoutRate() + " peaje(s) no tienen tarifa para esta categoría"
                 + " y no suman al total.</html>");
         fillItinerary();
 
         List<Toll> shown = new ArrayList<>();
-        List<GeoPosition> path = new ArrayList<>();
-        path.add(new GeoPosition(from.getLatitude(), from.getLongitude()));
         for (TripStop s : result.getStops()) {
             shown.add(s.getToll());
-            path.add(new GeoPosition(s.getToll().getLatitude(), s.getToll().getLongitude()));
         }
-        path.add(new GeoPosition(to.getLatitude(), to.getLongitude()));
+        List<GeoPosition> path = new ArrayList<>();
+        if (result.isOnRoad()) {
+            // Todos los puntos de la vía: la línea sigue la carretera
+            for (double[] p : result.getRoad().getPoints()) {
+                path.add(new GeoPosition(p[0], p[1]));
+            }
+        } else {
+            // Aproximado: origen, cada peaje y destino unidos en línea recta
+            path.add(new GeoPosition(from.getLatitude(), from.getLongitude()));
+            for (Toll t : shown) {
+                path.add(new GeoPosition(t.getLatitude(), t.getLongitude()));
+            }
+            path.add(new GeoPosition(to.getLatitude(), to.getLongitude()));
+        }
         map.showTolls(shown);
         map.showRoute(path);
         selectToll(null);

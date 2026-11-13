@@ -174,11 +174,12 @@ public class TravelerService {
     // ------------------------------------------------------------------ Planificar viaje
 
     /**
-     * Calcula los peajes de un viaje y lo que cuestan.
+     * Calcula los peajes de un viaje y lo que cuestan, de forma aproximada.
      *
-     * El sistema no tiene el trazado real de las carreteras, así que toma los peajes que
-     * están a menos de {@code corridorKm} de la línea recta entre origen y destino, en el
-     * orden en que se encuentran. Si se indica una ruta, solo cuenta los peajes de esa ruta.
+     * Se usa cuando no se pudo obtener la ruta por carretera (ver {@link #planTripOnRoad}):
+     * toma los peajes que están a menos de {@code corridorKm} de la línea recta entre origen
+     * y destino, en el orden en que se encuentran. Si se indica una ruta, solo cuenta los
+     * peajes de esa ruta.
      *
      * @param tolls      peajes entre los que se busca
      * @param prices     precio por peaje para la categoría del vehículo
@@ -243,6 +244,115 @@ public class TravelerService {
         }
         distance += distanceKm(lastLat, lastLon, destLat, destLon);
         return new TripPlan(stops, total, distance, withoutRate);
+    }
+
+    /**
+     * Calcula los peajes de un viaje sobre la ruta real por carretera.
+     *
+     * Un peaje es "del camino" si está a menos de {@code maxMeters} de la vía. Los peajes se
+     * ordenan por el punto de la vía donde quedan, y los km de cada uno son los recorridos
+     * por carretera desde el origen hasta ese punto. Si se indica una ruta, solo cuenta los
+     * peajes de esa ruta.
+     *
+     * @param tolls     peajes entre los que se busca
+     * @param prices    precio por peaje para la categoría del vehículo
+     * @param road      ruta por carretera (de {@link RouteService#findRoute})
+     * @param maxMeters distancia máxima del peaje a la vía, en metros
+     * @param routeId   ruta a la que se limita, o null para todas
+     * @return plan del viaje con peajes, total y distancia por carretera
+     */
+    public static TripPlan planTripOnRoad(List<Toll> tolls, Map<Integer, BigDecimal> prices,
+                                          RouteService.RoadRoute road, double maxMeters, String routeId) {
+        List<double[]> points = road.getPoints();
+        int n = points.size();
+        if (n < 2) {
+            throw new IllegalArgumentException("La ruta necesita al menos dos puntos");
+        }
+
+        // Km recorridos desde el origen hasta cada punto de la vía
+        double[] kmAt = new double[n];
+        for (int i = 1; i < n; i++) {
+            double[] a = points.get(i - 1);
+            double[] b = points.get(i);
+            kmAt[i] = kmAt[i - 1] + distanceKm(a[0], a[1], b[0], b[1]);
+        }
+        // Se ajusta a la distancia que da el servicio de rutas para que el último km coincida
+        double scale = kmAt[n - 1] > 0 ? road.getDistanceKm() / kmAt[n - 1] : 1;
+
+        // Caja que rodea la ruta, para descartar rápido los peajes lejanos
+        double marginDeg = maxMeters / 111_000.0 + 0.01;
+        double minLat = Double.MAX_VALUE;
+        double maxLat = -Double.MAX_VALUE;
+        double minLon = Double.MAX_VALUE;
+        double maxLon = -Double.MAX_VALUE;
+        for (double[] p : points) {
+            minLat = Math.min(minLat, p[0]);
+            maxLat = Math.max(maxLat, p[0]);
+            minLon = Math.min(minLon, p[1]);
+            maxLon = Math.max(maxLon, p[1]);
+        }
+
+        List<TripStop> found = new ArrayList<>();
+        for (Toll toll : tolls) {
+            if (routeId != null && !routeId.equals(toll.getRouteId())) {
+                continue;
+            }
+            double lat = toll.getLatitude();
+            double lon = toll.getLongitude();
+            if (lat < minLat - marginDeg || lat > maxLat + marginDeg
+                    || lon < minLon - marginDeg || lon > maxLon + marginDeg) {
+                continue;
+            }
+            double bestMeters = Double.MAX_VALUE;
+            double bestKm = 0;
+            for (int i = 0; i < n - 1; i++) {
+                double[] a = points.get(i);
+                double[] b = points.get(i + 1);
+                double[] hit = closestOnSegment(lat, lon, a, b);
+                if (hit[0] < bestMeters) {
+                    bestMeters = hit[0];
+                    bestKm = kmAt[i] + hit[1] * (kmAt[i + 1] - kmAt[i]);
+                }
+            }
+            if (bestMeters <= maxMeters) {
+                found.add(new TripStop(toll, prices.get(toll.getTollId()), bestKm * scale));
+            }
+        }
+        found.sort(Comparator.comparingDouble(TripStop::getKmFromOrigin));
+
+        BigDecimal total = BigDecimal.ZERO;
+        int withoutRate = 0;
+        for (TripStop stop : found) {
+            if (stop.getPrice() == null) {
+                withoutRate++;
+            } else {
+                total = total.add(stop.getPrice());
+            }
+        }
+        return new TripPlan(found, total, road.getDistanceKm(), withoutRate, road);
+    }
+
+    /**
+     * Punto del segmento a–b más cercano a (lat, lon), con una proyección plana local
+     * (precisa para segmentos cortos como los de una vía).
+     *
+     * @return {distancia en metros, posición en el segmento de 0 (en a) a 1 (en b)}
+     */
+    private static double[] closestOnSegment(double lat, double lon, double[] a, double[] b) {
+        double metersPerDegLat = 110_540.0;
+        double metersPerDegLon = 111_320.0 * Math.cos(Math.toRadians(lat));
+        // Coordenadas en metros con el peaje como origen
+        double ax = (a[1] - lon) * metersPerDegLon;
+        double ay = (a[0] - lat) * metersPerDegLat;
+        double bx = (b[1] - lon) * metersPerDegLon;
+        double by = (b[0] - lat) * metersPerDegLat;
+        double dx = bx - ax;
+        double dy = by - ay;
+        double length2 = dx * dx + dy * dy;
+        double t = length2 == 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / length2));
+        double px = ax + t * dx;
+        double py = ay + t * dy;
+        return new double[]{Math.sqrt(px * px + py * py), t};
     }
 
     /**
@@ -511,12 +621,33 @@ public class TravelerService {
         private final BigDecimal total;
         private final double distanceKm;
         private final int withoutRate;
+        private final RouteService.RoadRoute road;
 
+        /** Plan aproximado (línea recta), sin ruta por carretera. */
         public TripPlan(List<TripStop> stops, BigDecimal total, double distanceKm, int withoutRate) {
+            this(stops, total, distanceKm, withoutRate, null);
+        }
+
+        /**
+         * @param road ruta por carretera usada para el cálculo, o null si es aproximado
+         */
+        public TripPlan(List<TripStop> stops, BigDecimal total, double distanceKm, int withoutRate,
+                        RouteService.RoadRoute road) {
             this.stops = stops;
             this.total = total;
             this.distanceKm = distanceKm;
             this.withoutRate = withoutRate;
+            this.road = road;
+        }
+
+        /** @return true si se calculó sobre la ruta real por carretera */
+        public boolean isOnRoad() {
+            return road != null;
+        }
+
+        /** @return la ruta por carretera, o null si el plan es aproximado */
+        public RouteService.RoadRoute getRoad() {
+            return road;
         }
 
         public List<TripStop> getStops() {
@@ -527,7 +658,10 @@ public class TravelerService {
             return total;
         }
 
-        /** @return distancia aproximada en línea recta pasando por cada peaje */
+        /**
+         * @return distancia por carretera si {@link #isOnRoad()}; si no, distancia aproximada
+         *         en línea recta pasando por cada peaje
+         */
         public double getDistanceKm() {
             return distanceKm;
         }
