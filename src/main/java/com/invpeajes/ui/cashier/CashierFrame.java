@@ -216,6 +216,13 @@ public class CashierFrame extends JFrame {
         int answer = JOptionPane.showOptionDialog(this, summary, "Cerrar turno",
                 JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
         if (answer == JOptionPane.YES_OPTION) {
+            try {
+                service.closeShift(session);
+            } catch (RuntimeException e) {
+                // El turno quedará abierto; se cierra solo la próxima vez que el operador abra turno.
+                JOptionPane.showMessageDialog(this, e.getMessage(), "Cerrar turno",
+                        JOptionPane.WARNING_MESSAGE);
+            }
             clockTimer.stop();
             dispose();
             start(service);

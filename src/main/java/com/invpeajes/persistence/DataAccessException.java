@@ -18,6 +18,9 @@ public class DataAccessException extends RuntimeException {
     private static final int ORA_PARENT_NOT_FOUND = 2291;
     private static final int ORA_CHILD_RECORD_FOUND = 2292;
     private static final int ORA_NO_CONNECTION = 17002;
+    /** Errores propios de los procedimientos y triggers (RAISE_APPLICATION_ERROR). */
+    private static final int ORA_USER_ERROR_MIN = 20000;
+    private static final int ORA_USER_ERROR_MAX = 20999;
 
     private final int oracleErrorCode;
 
@@ -42,6 +45,9 @@ public class DataAccessException extends RuntimeException {
     }
 
     private static String translate(SQLException e) {
+        if (e.getErrorCode() >= ORA_USER_ERROR_MIN && e.getErrorCode() <= ORA_USER_ERROR_MAX) {
+            return userMessage(e.getMessage());
+        }
         switch (e.getErrorCode()) {
             case ORA_UNIQUE_VIOLATION:
                 return "ya existe un registro con ese valor único";
@@ -58,6 +64,19 @@ public class DataAccessException extends RuntimeException {
             default:
                 return e.getMessage();
         }
+    }
+
+    /**
+     * Deja solo el texto en español de un RAISE_APPLICATION_ERROR:
+     * "ORA-20504: El operador ... \nORA-06512: en ..." pasa a "El operador ...".
+     */
+    private static String userMessage(String oracleMessage) {
+        if (oracleMessage == null) {
+            return "la base de datos rechazó la operación";
+        }
+        String firstLine = oracleMessage.split("\\R", 2)[0];
+        int colon = firstLine.indexOf(": ");
+        return colon >= 0 ? firstLine.substring(colon + 2).trim() : firstLine.trim();
     }
     
 }

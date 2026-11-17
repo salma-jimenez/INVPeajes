@@ -163,7 +163,8 @@ public class TollService {
 
     /**
      * Cambia el estado operativo de un peaje.
-     * Si el peaje deja de estar OPERATIVO, sus casetas activas pasan a INACTIVA.
+     * Si el peaje deja de estar OPERATIVO, el trigger {@code trg_peaje_estado} de la base
+     * pasa sus casetas activas a INACTIVA y cierra los turnos abiertos.
      * @param tollId ID del peaje.
      * @param newStatus OPERATIVO, NO_OPERATIVO, SINIESTRADO o SIN_TARIFA.
      * @return Número de casetas que se desactivaron.
@@ -173,18 +174,19 @@ public class TollService {
     public int changeTollStatus(int tollId, String newStatus) {
         validateValue("estado operativo", newStatus, TOLL_STATUSES);
         Toll toll = findToll(tollId);
-        toll.setOperationalStatus(newStatus);
-        tollDAO.update(toll);
+        boolean wasOperational = STATUS_OPERATIONAL.equals(toll.getOperationalStatus());
 
+        // Se cuentan antes del cambio: después el trigger ya las habrá apagado.
         int deactivated = 0;
-        if (!STATUS_OPERATIONAL.equals(newStatus)) {
+        if (wasOperational && !STATUS_OPERATIONAL.equals(newStatus)) {
             for (TollBooth booth : boothDAO.findByToll(tollId)) {
                 if (BOOTH_ACTIVE.equals(booth.getStatus())) {
-                    boothDAO.updateStatus(booth.getBoothId(), BOOTH_INACTIVE);
                     deactivated++;
                 }
             }
         }
+        toll.setOperationalStatus(newStatus);
+        tollDAO.update(toll);
         return deactivated;
     }
 

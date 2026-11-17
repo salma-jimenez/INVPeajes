@@ -6,6 +6,7 @@ import com.invpeajes.model.AssistanceStatus;
 import com.invpeajes.model.AssistanceType;
 import com.invpeajes.model.ResourceAvailability;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -19,23 +20,24 @@ import java.util.Optional;
  * Acceso a datos de las tablas {@code PEAJE.ASISTENCIA} y
  * {@code PEAJE.HISTORIAL_ASISTENCIA}.
  *
- * <p>El historial se maneja aquí porque solo existe ligado a una asistencia:
- * toda operación que cambia el estado de una asistencia deja su registro de
- * historial y, si corresponde, actualiza la disponibilidad del recurso
- * asignado, todo dentro de la misma transacción.</p>
+ * <p>Desde la etapa 4 de la base de datos, el historial y el recurso los maneja
+ * el trigger {@code trg_historial_asistencia}: al crear la asistencia guarda la
+ * fila inicial, y en cada cambio de estado guarda el cambio, ocupa el recurso al
+ * ASIGNAR y lo libera al quedar ATENDIDA o CANCELADA. Este DAO solo le pasa la
+ * observación del cambio por medio de {@code pkg_control.g_nota_historial}.
+ * Los ID de ASISTENCIA e HISTORIAL_ASISTENCIA los genera la base (IDENTITY).</p>
  *
  * @author Salomejimenez
  */
 public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
 
-    private static final String COLUMNS =
-            "ID_ASISTENCIA, TIPO_ASISTENCIA, FECHA_SOLICITUD, LATITUD_INCIDENTE, LONGITUD_INCIDENTE, "
+    private static final String INSERT_COLUMNS =
+            "TIPO_ASISTENCIA, FECHA_SOLICITUD, LATITUD_INCIDENTE, LONGITUD_INCIDENTE, "
             + "ESTADO_ACTUAL, OBSERVACIONES, TELEFONO_CONTACTO, COSTO, PLACA, ID_PEAJE, ID_RECURSO, ID_TIQUETE, "
             + "ID_VIAJERO";
-    private static final String NEXT_ID_SQL =
-            "SELECT NVL(MAX(ID_ASISTENCIA), 0) + 1 FROM PEAJE.ASISTENCIA";
+    private static final String COLUMNS = "ID_ASISTENCIA, " + INSERT_COLUMNS;
     private static final String INSERT_SQL =
-            "INSERT INTO PEAJE.ASISTENCIA (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO PEAJE.ASISTENCIA (" + INSERT_COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String SELECT_SQL =
             "SELECT " + COLUMNS + " FROM PEAJE.ASISTENCIA ";
     private static final String UPDATE_SQL =
@@ -47,47 +49,39 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     private static final String DELETE_SQL =
             "DELETE FROM PEAJE.ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
-    private static final String HISTORY_NEXT_ID_SQL =
-            "SELECT NVL(MAX(ID_HISTORIAL), 0) + 1 FROM PEAJE.HISTORIAL_ASISTENCIA";
-    private static final String HISTORY_INSERT_SQL =
-            "INSERT INTO PEAJE.HISTORIAL_ASISTENCIA "
-            + "(ID_HISTORIAL, ESTADO_ANTERIOR, ESTADO_NUEVO, FECHA_CAMBIO, OBSERVACIONES, ID_ASISTENCIA) "
-            + "VALUES (?, ?, ?, ?, ?, ?)";
+    /** Observación que trg_historial_asistencia copia en la fila del historial. */
+    private static final String SET_HISTORY_NOTE_SQL =
+            "BEGIN pkg_control.g_nota_historial := ?; END;";
     private static final String HISTORY_FIND_SQL =
             "SELECT * FROM PEAJE.HISTORIAL_ASISTENCIA WHERE ID_ASISTENCIA = ? "
             + "ORDER BY FECHA_CAMBIO, ID_HISTORIAL";
-    private static final String HISTORY_DELETE_SQL =
-            "DELETE FROM PEAJE.HISTORIAL_ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
-    private final AssistanceResourceDAO resourceDAO;
-
-    /** Crea el DAO con su DAO de recursos por defecto. */
+    /** Crea el DAO. */
     public AssistanceDAO() {
-        this(new AssistanceResourceDAO());
     }
 
     /**
-     * Crea el DAO con un DAO de recursos inyectado.
+     * Crea el DAO. El DAO de recursos ya no se usa: el trigger
+     * {@code trg_historial_asistencia} cambia la disponibilidad del recurso.
+     * Se conserva el constructor por compatibilidad.
      *
-     * @param resourceDAO DAO para actualizar la disponibilidad del recurso
+     * @param resourceDAO no se usa
      */
     public AssistanceDAO(AssistanceResourceDAO resourceDAO) {
-        this.resourceDAO = resourceDAO;
+        this();
     }
 
     /**
-     * Inserta la asistencia y su registro inicial de historial en una sola
-     * transacción. Asigna el id generado a la asistencia recibida.
+     * Inserta la asistencia y asigna a la asistencia recibida el id que generó la base.
+     * La fila inicial del historial la guarda el trigger, con la nota "Solicitud registrada".
      */
     @Override
     public void insert(Assistance assistance) {
         try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try {
-                assistance.setAssistanceId(nextId(con));
-                insertRow(con, assistance);
-                insertHistory(con, new AssistanceHistory(assistance.getAssistanceId(), null,
-                        assistance.getCurrentStatus(), "Solicitud registrada"));
+                setHistoryNote(con, "Solicitud registrada");
+                assistance.setAssistanceId(insertRow(con, assistance));
                 con.commit();
             } catch (SQLException e) {
                 con.rollback();
@@ -181,15 +175,13 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     }
 
     /**
-     * Guarda el nuevo estado de la asistencia, registra el cambio en el
-     * historial y actualiza la disponibilidad del recurso asignado, todo en
-     * una sola transacción.
+     * Guarda el nuevo estado de la asistencia. El trigger {@code trg_historial_asistencia}
+     * registra el cambio en el historial (con la nota indicada) y ocupa o libera el recurso.
      *
      * @param assistance           asistencia con el estado nuevo ya asignado
-     * @param previousStatus       estado que tenía antes del cambio
+     * @param previousStatus       estado que tenía antes del cambio (lo guarda el trigger)
      * @param notes                motivo del cambio
-     * @param resourceAvailability nueva disponibilidad del recurso asignado,
-     *                             o null si el recurso no cambia
+     * @param resourceAvailability no se usa: la disponibilidad la cambia el trigger
      * @return true si se actualizó la asistencia
      */
     public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
@@ -197,18 +189,12 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
         try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try (PreparedStatement ps = con.prepareStatement(CHANGE_STATUS_SQL)) {
+                setHistoryNote(con, notes);
                 ps.setString(1, assistance.getCurrentStatus().getDbValue());
                 JdbcUtils.setNullableInt(ps, 2, assistance.getResourceId());
                 ps.setBigDecimal(3, assistance.getCost());
                 ps.setInt(4, assistance.getAssistanceId());
                 boolean updated = ps.executeUpdate() > 0;
-                if (updated) {
-                    insertHistory(con, new AssistanceHistory(assistance.getAssistanceId(),
-                            previousStatus, assistance.getCurrentStatus(), notes));
-                    if (resourceAvailability != null && assistance.getResourceId() != null) {
-                        resourceDAO.updateAvailability(con, assistance.getResourceId(), resourceAvailability);
-                    }
-                }
                 con.commit();
                 return updated;
             } catch (SQLException e) {
@@ -221,23 +207,16 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
         }
     }
 
-    /** Elimina la asistencia junto con su historial en una sola transacción. */
+    /**
+     * Elimina una asistencia CANCELADA. El trigger {@code trg_borrar_asistencia}
+     * borra su historial y rechaza las que no están canceladas.
+     */
     @Override
     public boolean delete(Integer id) {
-        try (Connection con = DatabaseConnection.getConnection()) {
-            con.setAutoCommit(false);
-            try (PreparedStatement history = con.prepareStatement(HISTORY_DELETE_SQL);
-                 PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
-                history.setInt(1, id);
-                history.executeUpdate();
-                ps.setInt(1, id);
-                boolean deleted = ps.executeUpdate() > 0;
-                con.commit();
-                return deleted;
-            } catch (SQLException e) {
-                con.rollback();
-                throw e;
-            }
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(DELETE_SQL)) {
+            ps.setInt(1, id);
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             throw new DataAccessException("Error al eliminar la asistencia " + id, e);
         }
@@ -265,49 +244,41 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
         }
     }
 
-    private void insertRow(Connection con, Assistance a) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement(INSERT_SQL)) {
-            ps.setInt(1, a.getAssistanceId());
-            ps.setString(2, a.getType().getDbValue());
-            ps.setTimestamp(3, Timestamp.valueOf(a.getRequestDate()));
-            JdbcUtils.setNullableDouble(ps, 4, a.getIncidentLatitude());
-            JdbcUtils.setNullableDouble(ps, 5, a.getIncidentLongitude());
-            ps.setString(6, a.getCurrentStatus().getDbValue());
-            ps.setString(7, a.getNotes());
-            ps.setString(8, a.getContactPhone());
-            ps.setBigDecimal(9, a.getCost());
-            ps.setString(10, a.getPlate());
-            ps.setInt(11, a.getTollId());
-            JdbcUtils.setNullableInt(ps, 12, a.getResourceId());
-            JdbcUtils.setNullableLong(ps, 13, a.getTicketId());
-            JdbcUtils.setNullableInt(ps, 14, a.getTravelerId());
+    /** Inserta la fila y devuelve el ID_ASISTENCIA que generó la base. */
+    private int insertRow(Connection con, Assistance a) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(INSERT_SQL, new String[] {"ID_ASISTENCIA"})) {
+            ps.setString(1, a.getType().getDbValue());
+            ps.setTimestamp(2, Timestamp.valueOf(a.getRequestDate()));
+            JdbcUtils.setNullableDouble(ps, 3, a.getIncidentLatitude());
+            JdbcUtils.setNullableDouble(ps, 4, a.getIncidentLongitude());
+            ps.setString(5, a.getCurrentStatus().getDbValue());
+            ps.setString(6, a.getNotes());
+            ps.setString(7, a.getContactPhone());
+            ps.setBigDecimal(8, a.getCost());
+            ps.setString(9, a.getPlate());
+            ps.setInt(10, a.getTollId());
+            JdbcUtils.setNullableInt(ps, 11, a.getResourceId());
+            JdbcUtils.setNullableLong(ps, 12, a.getTicketId());
+            JdbcUtils.setNullableInt(ps, 13, a.getTravelerId());
             ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new SQLException("La base de datos no devolvió el ID de la asistencia");
+                }
+                return keys.getInt(1);
+            }
         }
     }
 
-    private void insertHistory(Connection con, AssistanceHistory history) throws SQLException {
-        try (PreparedStatement idPs = con.prepareStatement(HISTORY_NEXT_ID_SQL);
-             ResultSet rs = idPs.executeQuery()) {
-            rs.next();
-            history.setHistoryId(rs.getLong(1));
+    /** Deja en la sesión la nota que el trigger guardará en el historial (máximo 200 caracteres). */
+    private void setHistoryNote(Connection con, String notes) throws SQLException {
+        String note = notes == null || notes.isBlank() ? null : notes.trim();
+        if (note != null && note.length() > 200) {
+            note = note.substring(0, 200);
         }
-        AssistanceStatus previous = history.getPreviousStatus();
-        try (PreparedStatement ps = con.prepareStatement(HISTORY_INSERT_SQL)) {
-            ps.setLong(1, history.getHistoryId());
-            ps.setString(2, previous == null ? null : previous.getDbValue());
-            ps.setString(3, history.getNewStatus().getDbValue());
-            ps.setTimestamp(4, Timestamp.valueOf(history.getChangeDate()));
-            ps.setString(5, history.getNotes());
-            ps.setInt(6, history.getAssistanceId());
-            ps.executeUpdate();
-        }
-    }
-
-    private int nextId(Connection con) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement(NEXT_ID_SQL);
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getInt(1);
+        try (CallableStatement cs = con.prepareCall(SET_HISTORY_NOTE_SQL)) {
+            cs.setString(1, note);
+            cs.execute();
         }
     }
 

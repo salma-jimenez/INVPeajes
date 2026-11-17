@@ -12,6 +12,7 @@ import com.invpeajes.persistence.TollBoothDAO;
 import com.invpeajes.persistence.CashierDAOImpl;
 import com.invpeajes.persistence.DataAccessException;
 import com.invpeajes.persistence.ICashierDAO;
+import com.invpeajes.persistence.ShiftDAO;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -33,6 +34,10 @@ import java.util.stream.Collectors;
  *
  * El precio siempre se toma de la base de datos, nunca de la interfaz, para que no se pueda
  * cobrar un valor distinto a la tarifa oficial.
+ *
+ * El turno queda registrado en la base de datos (tabla TURNO_CASETA, con {@link ShiftDAO}):
+ * desde la etapa 4 el trigger {@code trg_validar_cobro} no deja guardar un tiquete si el
+ * operador no tiene el turno abierto en esa caseta.
  *
  * Reutiliza los servicios del equipo: {@link TollRateService} para las tarifas,
  * {@link VehicleCategoryService} para las categorías, {@link VehicleService} para registrar
@@ -80,6 +85,7 @@ public class CashierService {
     private final VehicleCategoryService categoryService;
     private final VehicleService vehicleService;
     private final TicketService ticketService;
+    private final ShiftDAO shiftDAO;
 
     /**
      * Crea el servicio con las implementaciones de la base de datos.
@@ -101,12 +107,29 @@ public class CashierService {
     public CashierService(ICashierDAO cashierDAO, TollBoothDAO boothDAO, TollRateService rateService,
                           VehicleCategoryService categoryService, VehicleService vehicleService,
                           TicketService ticketService) {
+        this(cashierDAO, boothDAO, rateService, categoryService, vehicleService, ticketService, new ShiftDAO());
+    }
+
+    /**
+     * Crea el servicio con todas sus dependencias, incluido el DAO de turnos.
+     * @param cashierDAO DAO de la caja (datos del operador y su peaje).
+     * @param boothDAO DAO de casetas.
+     * @param rateService Servicio de tarifas.
+     * @param categoryService Servicio de categorías vehiculares.
+     * @param vehicleService Servicio de vehículos.
+     * @param ticketService Servicio de tiquetes.
+     * @param shiftDAO DAO de turnos (TURNO_CASETA).
+     */
+    public CashierService(ICashierDAO cashierDAO, TollBoothDAO boothDAO, TollRateService rateService,
+                          VehicleCategoryService categoryService, VehicleService vehicleService,
+                          TicketService ticketService, ShiftDAO shiftDAO) {
         this.cashierDAO = cashierDAO;
         this.boothDAO = boothDAO;
         this.rateService = rateService;
         this.categoryService = categoryService;
         this.vehicleService = vehicleService;
         this.ticketService = ticketService;
+        this.shiftDAO = shiftDAO;
     }
 
     /**
@@ -148,11 +171,15 @@ public class CashierService {
     }
 
     /**
-     * Abre el turno en una caseta.
+     * Abre el turno en una caseta y lo registra en la base de datos.
+     * Si el operador había quedado con un turno abierto (la aplicación se cerró sin cerrar
+     * turno), ese turno se cierra primero.
      * @param session Sesión del operador.
      * @param booth Caseta elegida.
      * @return Sesión con la caseta asignada.
      * @throws IllegalArgumentException Si la caseta es de otro peaje o no está activa.
+     * @throws DataAccessException Si la base no permite abrir el turno (por ejemplo, otro
+     *                             operador ya tiene un turno abierto en esa caseta).
      */
     public CashierSession openShift(CashierSession session, TollBooth booth) {
         if (booth == null) {
@@ -166,7 +193,20 @@ public class CashierService {
             throw new IllegalArgumentException("La caseta " + booth.getBoothNumber() + " está "
                     + booth.getStatus());
         }
+        shiftDAO.open(session.getOperatorId(), booth.getBoothId());
         return session.withBooth(booth);
+    }
+
+    /**
+     * Cierra en la base de datos el turno abierto del operador.
+     * Si no tiene turno abierto, no hace nada.
+     * @param session Sesión del operador.
+     * @throws DataAccessException Si falla la base de datos.
+     */
+    public void closeShift(CashierSession session) {
+        if (session != null) {
+            shiftDAO.close(session.getOperatorId());
+        }
     }
 
     /**
@@ -317,7 +357,7 @@ public class CashierService {
         BigDecimal change = CASH.equals(paymentMethod) ? calculateChange(total, received) : BigDecimal.ZERO;
 
         ChargeReceipt draft = new ChargeReceipt(session, rate, normalizedPlate, paymentMethod, tag, paid, change);
-        ensureVehicle(normalizedPlate, categoryId);
+        ensureVehicle(normalizedPlate, categoryId, tag);
         Ticket ticket = saveTicket(session, categoryId, normalizedPlate, paymentMethod, tag);
         return draft.withTicketData(ticket.getId(), ticket.getPrefix(), ticket.getSequenceNumber(),
                 ticket.getPaymentDate());
@@ -326,18 +366,33 @@ public class CashierService {
     /**
      * TIQUETE.PLACA tiene llave foránea a VEHICULOS, y los carros que pasan por el peaje
      * no se conocen de antes: si la placa no existe se registra solo con su categoría.
+     *
+     * El código del TAG ya no se guarda en TIQUETE sino en VEHICULOS, y la base rechaza un
+     * pago con TAG si el vehículo no lo tiene. Por eso, cuando se paga con TAG:
+     * un vehículo nuevo se registra con su TAG, uno sin TAG lo recibe, y uno con otro TAG
+     * se rechaza.
      */
-    private void ensureVehicle(String plate, int categoryId) {
-        if (vehicleService.find(plate).isPresent()) {
+    private void ensureVehicle(String plate, int categoryId, String tag) {
+        Optional<Vehicle> existing = vehicleService.find(plate);
+        if (!existing.isPresent()) {
+            try {
+                vehicleService.register(new Vehicle(plate, null, null, tag, null, categoryId));
+            } catch (ValidationException e) {
+                // Otra caseta la registró al mismo tiempo: ya existe, que es lo que se necesita.
+                existing = vehicleService.find(plate);
+                if (!existing.isPresent()) {
+                    throw e;
+                }
+            }
+        }
+        if (tag == null || !existing.isPresent()) {
             return;
         }
-        try {
-            vehicleService.register(new Vehicle(plate, null, null, null, null, categoryId));
-        } catch (ValidationException e) {
-            // Otra caseta la registró al mismo tiempo: ya existe, que es lo que se necesita.
-            if (!vehicleService.find(plate).isPresent()) {
-                throw e;
-            }
+        Vehicle vehicle = existing.get();
+        if (!vehicle.hasTag()) {
+            vehicleService.registerTag(plate, tag, null);
+        } else if (!tag.equalsIgnoreCase(vehicle.getTagCode())) {
+            throw new IllegalArgumentException("El TAG leído no corresponde a la placa " + plate);
         }
     }
 

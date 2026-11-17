@@ -2,6 +2,7 @@ package com.invpeajes.service;
 
 import com.invpeajes.model.CashierSession;
 import com.invpeajes.model.Traveler;
+import com.invpeajes.persistence.AccessLogDAO;
 import com.invpeajes.persistence.CashierDAOImpl;
 import com.invpeajes.persistence.DataAccessException;
 import com.invpeajes.persistence.ICashierDAO;
@@ -35,6 +36,10 @@ import java.util.regex.Pattern;
  * Después de {@link #MAX_ATTEMPTS} intentos fallidos con la misma cédula o correo, se bloquea por
  * {@link #LOCK_TIME}.
  *
+ * Cada intento queda en la bitácora de la base de datos ({@link AccessLogDAO}, procedimiento
+ * {@code pkg_seguridad.Pr_registrar_acceso}). Si un empleado falla 3 veces en 15 minutos, la base
+ * bloquea su cuenta hasta que un superior la reactive.
+ *
  * @author Salomejimenez
  * @version 1.0
  */
@@ -50,6 +55,8 @@ public class AuthService {
 
     private static final String WRONG_EMPLOYEE = "Cédula o contraseña incorrecta";
     private static final String WRONG_TRAVELER = "Correo o contraseña incorrecta";
+    private static final String BLOCKED_EMPLOYEE = "Su cuenta está bloqueada por intentos fallidos. "
+            + "Pida a su jefe de estación o al administrador que la reactive";
     private static final Pattern EMPLOYEE_ID = Pattern.compile("\\d{6,15}");
     private static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}");
     private static final Pattern NAME = Pattern.compile("[\\p{L} '.-]{2,30}");
@@ -58,6 +65,7 @@ public class AuthService {
 
     private final ICashierDAO employeeDAO;
     private final TravelerDAO travelerDAO;
+    private final AccessLogDAO accessLog;
     private final Map<String, Attempts> attempts = new HashMap<>();
 
     /** Crea el servicio con los DAO de la base de datos. */
@@ -71,8 +79,19 @@ public class AuthService {
      * @param travelerDAO DAO de viajeros.
      */
     public AuthService(ICashierDAO employeeDAO, TravelerDAO travelerDAO) {
+        this(employeeDAO, travelerDAO, new AccessLogDAO());
+    }
+
+    /**
+     * Crea el servicio con todos sus DAO, incluida la bitácora de accesos.
+     * @param employeeDAO DAO de empleados.
+     * @param travelerDAO DAO de viajeros.
+     * @param accessLog DAO de la bitácora de inicios de sesión.
+     */
+    public AuthService(ICashierDAO employeeDAO, TravelerDAO travelerDAO, AccessLogDAO accessLog) {
         this.employeeDAO = employeeDAO;
         this.travelerDAO = travelerDAO;
+        this.accessLog = accessLog;
     }
 
     /**
@@ -91,10 +110,19 @@ public class AuthService {
                 throw new IllegalArgumentException("La cédula debe tener entre 6 y 15 dígitos");
             }
             checkLocked("E:" + id);
+            if (accessLog.isEmployeeBlocked(id)) {
+                throw new IllegalStateException(BLOCKED_EMPLOYEE);
+            }
             String expected = employeeDAO.findPasswordHash(id).orElse(null);
             if (expected == null || !expected.equalsIgnoreCase(hash(id, password))) {
+                logAttempt(id, AccessLogDAO.EMPLOYEE, false);
+                if (accessLog.isEmployeeBlocked(id)) {
+                    attempts.remove("E:" + id);
+                    throw new IllegalStateException(BLOCKED_EMPLOYEE);
+                }
                 throw new IllegalArgumentException(failed("E:" + id, WRONG_EMPLOYEE));
             }
+            logAttempt(id, AccessLogDAO.EMPLOYEE, true);
             CashierSession session = employeeDAO.findOperator(id)
                     .orElseThrow(() -> new IllegalArgumentException(WRONG_EMPLOYEE));
             String role = session.getRole();
@@ -129,8 +157,10 @@ public class AuthService {
             checkLocked("V:" + mail);
             Traveler traveler = travelerDAO.findByEmail(mail).orElse(null);
             if (traveler == null || !traveler.getPasswordHash().equalsIgnoreCase(hash(mail, password))) {
+                logAttempt(mail, AccessLogDAO.TRAVELER, false);
                 throw new IllegalArgumentException(failed("V:" + mail, WRONG_TRAVELER));
             }
+            logAttempt(mail, AccessLogDAO.TRAVELER, true);
             attempts.remove("V:" + mail);
             return traveler;
         } finally {
@@ -213,6 +243,18 @@ public class AuthService {
             return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 no está disponible", e);
+        }
+    }
+
+    /**
+     * Guarda el intento en la bitácora de la base. Si la bitácora falla, el inicio de sesión
+     * sigue funcionando: solo se avisa en la consola.
+     */
+    private void logAttempt(String identifier, String userType, boolean successful) {
+        try {
+            accessLog.register(identifier, userType, successful);
+        } catch (DataAccessException e) {
+            System.err.println("No se pudo guardar el intento de acceso de " + identifier + ": " + e.getMessage());
         }
     }
 
