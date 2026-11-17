@@ -66,8 +66,8 @@ public class StatisticsDAO {
             "SELECT TRUNC(t.FECHA_PAGO) DIA, COUNT(*), NVL(SUM(t.VALOR_PAGO), 0)" + TICKETS_OF_TOLL
           + "GROUP BY TRUNC(t.FECHA_PAGO)";
     private static final String SQL_HOURLY =
-            "SELECT NVL(TO_NUMBER(SUBSTR(t.HORA_PAGO, 1, 2)), 0) HORA, COUNT(*), NVL(SUM(t.VALOR_PAGO), 0)"
-          + TICKETS_OF_TOLL + "GROUP BY NVL(TO_NUMBER(SUBSTR(t.HORA_PAGO, 1, 2)), 0)";
+            "SELECT EXTRACT(HOUR FROM t.FECHA_PAGO) HORA, COUNT(*), NVL(SUM(t.VALOR_PAGO), 0)"
+          + TICKETS_OF_TOLL + "GROUP BY EXTRACT(HOUR FROM t.FECHA_PAGO)";
     private static final String SQL_BY_METHOD =
             "SELECT t.METODO_PAGO, NVL(SUM(t.VALOR_PAGO), 0)" + TICKETS_OF_TOLL + "GROUP BY t.METODO_PAGO";
     private static final String SQL_BY_CATEGORY =
@@ -136,7 +136,7 @@ public class StatisticsDAO {
     }
 
     /**
-     * Vehículos y recaudo por hora (0 a 23) de un rango, según HORA_PAGO.
+     * Vehículos y recaudo por hora (0 a 23) de un rango, según la hora de FECHA_PAGO.
      * @param tollId ID del peaje.
      * @param from Primer día (incluido).
      * @param to Día final (excluido).

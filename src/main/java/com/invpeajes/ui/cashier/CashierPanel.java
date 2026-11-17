@@ -15,8 +15,6 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
-import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -26,14 +24,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
-import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
@@ -48,8 +43,6 @@ import javax.swing.text.DocumentFilter;
  * 1) el cajero elige la categoría, 2) escribe la placa y el medio de pago y
  * 3) en efectivo marca el valor recibido con el teclado numérico; el sistema calcula el cambio.
  * Al confirmar, guarda el tiquete y solo entonces lo muestra para imprimir.
- *
- * Atajos: F1–F7 eligen la categoría, F12 cobra y Esc limpia.
  *
  * @author Luis Guerrero
  * @version 1.1
@@ -89,8 +82,8 @@ public class CashierPanel extends JPanel {
     private final JLabel changeLabel = new JLabel("$0", SwingConstants.RIGHT);
     private final JLabel statusLabel = Theme.muted(" ");
     private final JLabel cashInBoxLabel = new JLabel();
-    private final FlatButton chargeButton = Theme.primaryButton("Cobrar  (F12)");
-    private final FlatButton clearButton = Theme.secondaryButton("Limpiar  (Esc)");
+    private final FlatButton chargeButton = Theme.primaryButton("Cobrar");
+    private final FlatButton clearButton = Theme.secondaryButton("Limpiar");
 
     /**
      * @param service Servicio de la caja.
@@ -119,11 +112,9 @@ public class CashierPanel extends JPanel {
         c.gridy = 2;
         c.weighty = 1;
         c.insets = new Insets(0, 2, 0, 14);
-        JLabel hint = Theme.muted("<html>Atajos de teclado: F1–F7 categoría · Enter pasa de la placa al recibido · "
-                + "F12 cobrar · Esc limpiar.<br>El valor recibido se digita con el teclado del computador "
-                + "o con el teclado de la pantalla.</html>");
-        hint.setVerticalAlignment(SwingConstants.TOP);
-        add(hint, c);
+        JPanel filler = new JPanel();
+        filler.setOpaque(false);
+        add(filler, c);
 
         c.gridx = 1;
         c.gridy = 0;
@@ -132,7 +123,6 @@ public class CashierPanel extends JPanel {
         c.insets = new Insets(0, 0, 0, 0);
         add(buildPayCard(), c);
 
-        bindKeys();
         selectMethod(allowedMethods.get(0));
         loadRates();
     }
@@ -160,12 +150,9 @@ public class CashierPanel extends JPanel {
             paintTile(categoryId);
             grid.add(tile);
         }
-        JLabel legend = new JLabel("<html><div style='text-align:center'>F1 – F7<br>para elegir<br>rápido</div></html>",
-                SwingConstants.CENTER);
-        legend.setFont(Theme.font(Font.PLAIN, 12));
-        legend.setForeground(Theme.MUTED);
-        legend.setBorder(BorderFactory.createDashedBorder(Theme.INPUT_BORDER, 4, 3));
-        grid.add(legend);
+        JPanel emptyCell = new JPanel();
+        emptyCell.setOpaque(false);
+        grid.add(emptyCell);
         card.add(grid, BorderLayout.CENTER);
         return card;
     }
@@ -353,28 +340,6 @@ public class CashierPanel extends JPanel {
         chargeButton.addActionListener(e -> charge());
         clearButton.addActionListener(e -> clearForm());
         return card;
-    }
-
-    private void bindKeys() {
-        for (int i = 0; i < ROMAN.length; i++) {
-            final int categoryId = i + 1;
-            bind(KeyStroke.getKeyStroke(KeyEvent.VK_F1 + i, 0), "cat" + categoryId,
-                    () -> selectCategory(categoryId));
-        }
-        bind(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "charge", this::charge);
-        bind(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "clear", this::clearForm);
-    }
-
-    private void bind(KeyStroke key, String name, Runnable action) {
-        getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(key, name);
-        getActionMap().put(name, new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (isShowing()) {
-                    action.run();
-                }
-            }
-        });
     }
 
     // ------------------------------------------------------------------

@@ -22,17 +22,20 @@ public class TicketDao {
     private static final String SELECT_COLUMNS =
             "SELECT ID_TIQUETE, PREFIJO, CONSECUTIVO, FECHA_PAGO, HORA_PAGO, VALOR_PEAJE, "
             + "VALOR_SERVICIOS, VALOR_PAGO, METODO_PAGO, CODIGO_TAG, PLACA, ID_CATEGORIA, "
-            + "ID_CASETA, CEDULA_OPERADOR FROM PEAJE.TIQUETE";
+            + "ID_CASETA, CEDULA_OPERADOR FROM PEAJE.V_TIQUETE";
+
+    // TIQUETE ya no tiene HORA_PAGO ni CODIGO_TAG: la hora sale de FECHA_PAGO y el TAG
+    // vive en VEHICULOS. Para leer se usa la vista V_TIQUETE, que los sigue mostrando.
  
     private static final String INSERT =
-            "INSERT INTO PEAJE.TIQUETE (PREFIJO, CONSECUTIVO, FECHA_PAGO, HORA_PAGO, VALOR_PEAJE, "
-            + "VALOR_SERVICIOS, VALOR_PAGO, METODO_PAGO, CODIGO_TAG, PLACA, ID_CATEGORIA, "
-            + "ID_CASETA, CEDULA_OPERADOR) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO PEAJE.TIQUETE (PREFIJO, CONSECUTIVO, FECHA_PAGO, VALOR_PEAJE, "
+            + "VALOR_SERVICIOS, VALOR_PAGO, METODO_PAGO, PLACA, ID_CATEGORIA, "
+            + "ID_CASETA, CEDULA_OPERADOR) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
  
     private static final String UPDATE =
-            "UPDATE PEAJE.TIQUETE SET PREFIJO = ?, CONSECUTIVO = ?, FECHA_PAGO = ?, HORA_PAGO = ?, "
+            "UPDATE PEAJE.TIQUETE SET PREFIJO = ?, CONSECUTIVO = ?, FECHA_PAGO = ?, "
             + "VALOR_PEAJE = ?, VALOR_SERVICIOS = ?, VALOR_PAGO = ?, METODO_PAGO = ?, "
-            + "CODIGO_TAG = ?, PLACA = ?, ID_CATEGORIA = ?, ID_CASETA = ?, CEDULA_OPERADOR = ? "
+            + "PLACA = ?, ID_CATEGORIA = ?, ID_CASETA = ?, CEDULA_OPERADOR = ? "
             + "WHERE ID_TIQUETE = ?";
  
     private static final String DELETE = "DELETE FROM PEAJE.TIQUETE WHERE ID_TIQUETE = ?";
@@ -125,7 +128,7 @@ public class TicketDao {
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(UPDATE)) {
             fillStatement(statement, ticket);
-            statement.setLong(14, ticket.getId());
+            statement.setLong(12, ticket.getId());
             return statement.executeUpdate() > 0;
         }
     }
@@ -170,16 +173,14 @@ public class TicketDao {
         statement.setLong(2, ticket.getSequenceNumber());
         statement.setTimestamp(3, ticket.getPaymentDate() == null
                 ? null : Timestamp.valueOf(ticket.getPaymentDate()));
-        statement.setString(4, ticket.getPaymentTime());
-        statement.setBigDecimal(5, ticket.getTollAmount());
-        statement.setBigDecimal(6, ticket.getServiceAmount());
-        statement.setBigDecimal(7, ticket.getTotalAmount());
-        statement.setString(8, ticket.getPaymentMethod());
-        statement.setString(9, ticket.getTagCode());
-        statement.setString(10, ticket.getLicensePlate());
-        statement.setInt(11, ticket.getCategoryId());
-        statement.setLong(12, ticket.getBoothId());
-        statement.setString(13, ticket.getOperatorId());
+        statement.setBigDecimal(4, ticket.getTollAmount());
+        statement.setBigDecimal(5, ticket.getServiceAmount());
+        statement.setBigDecimal(6, ticket.getTotalAmount());
+        statement.setString(7, ticket.getPaymentMethod());
+        statement.setString(8, ticket.getLicensePlate());
+        statement.setInt(9, ticket.getCategoryId());
+        statement.setLong(10, ticket.getBoothId());
+        statement.setString(11, ticket.getOperatorId());
     }
  
     private List<Ticket> mapRows(ResultSet result) throws SQLException {
@@ -208,4 +209,4 @@ public class TicketDao {
         ticket.setOperatorId(result.getString("CEDULA_OPERADOR"));
         return ticket;
     }
-}
+}
