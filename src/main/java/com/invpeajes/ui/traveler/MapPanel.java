@@ -1,8 +1,11 @@
 package com.invpeajes.ui.traveler;
 
+import com.invpeajes.model.HealthCenter;
 import com.invpeajes.model.Toll;
+import com.invpeajes.service.HealthCenterService;
 import com.invpeajes.service.TravelerService;
 import com.invpeajes.service.TravelerService.Catalog;
+import com.invpeajes.ui.common.Async;
 import com.invpeajes.ui.common.FlatButton;
 import com.invpeajes.ui.common.Theme;
 import java.awt.BorderLayout;
@@ -16,8 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 import javax.swing.BorderFactory;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
@@ -27,7 +32,8 @@ import javax.swing.event.DocumentListener;
 
 /**
  * Mapa de peajes con filtros por departamento, ruta y concesionario, buscador por
- * nombre y la ficha del peaje que se escoja.
+ * nombre y la ficha del peaje que se escoja. Una casilla permite mostrar también los
+ * centros de salud públicos (se cargan de la base de datos la primera vez que se activa).
  *
  * @author Salma Jiménez Vega
  * @version 1.0
@@ -44,6 +50,8 @@ public class MapPanel extends JPanel {
     private final JComboBox<Option> department = new JComboBox<>();
     private final JComboBox<Option> route = new JComboBox<>();
     private final JComboBox<Option> concessionaire = new JComboBox<>();
+    private final JCheckBox healthCenters = new JCheckBox("Centros de salud");
+    private final HealthCenterService healthCenterService = new HealthCenterService();
     private Catalog catalog;
     private boolean filling;
 
@@ -77,6 +85,11 @@ public class MapPanel extends JPanel {
             TravelerUi.styleCombo(combo);
             combo.addActionListener(e -> applyFilters(true));
         }
+        healthCenters.setOpaque(false);
+        healthCenters.setFont(Theme.font(java.awt.Font.PLAIN, 13));
+        healthCenters.setForeground(Theme.TEXT);
+        healthCenters.setToolTipText("Mostrar los hospitales y centros de salud públicos en el mapa");
+        healthCenters.addActionListener(e -> toggleHealthCenters());
         FlatButton clear = Theme.secondaryButton("Limpiar");
         clear.addActionListener(e -> clearFilters());
 
@@ -89,8 +102,13 @@ public class MapPanel extends JPanel {
         addFilter(filters, 1, "Departamento", department, 1);
         addFilter(filters, 2, "Ruta", route, 1);
         addFilter(filters, 3, "Concesionario", concessionaire, 1.2);
+        GridBagConstraints h = new GridBagConstraints();
+        h.gridx = 4;
+        h.anchor = GridBagConstraints.SOUTH;
+        h.insets = new Insets(0, 4, 6, 6);
+        filters.add(healthCenters, h);
         GridBagConstraints c = new GridBagConstraints();
-        c.gridx = 4;
+        c.gridx = 5;
         c.anchor = GridBagConstraints.SOUTH;
         c.insets = new Insets(0, 4, 0, 0);
         filters.add(clear, c);
@@ -159,6 +177,32 @@ public class MapPanel extends JPanel {
         clearFilters();
         map.select(toll, true);
         detail.showToll(toll);
+    }
+
+    /**
+     * Muestra u oculta los centros de salud. La primera vez los trae de la base de datos
+     * en segundo plano (son unos 3.800).
+     */
+    private void toggleHealthCenters() {
+        boolean show = healthCenters.isSelected();
+        if (!show || map.hasHealthCenters()) {
+            map.setHealthCentersVisible(show);
+            return;
+        }
+        healthCenters.setEnabled(false);
+        healthCenters.setText("Cargando...");
+        Async.run(healthCenterService::findAll, (List<HealthCenter> centers) -> {
+            map.showHealthCenters(centers);
+            map.setHealthCentersVisible(true);
+            healthCenters.setText("Centros de salud");
+            healthCenters.setEnabled(true);
+        }, error -> {
+            healthCenters.setSelected(false);
+            healthCenters.setText("Centros de salud");
+            healthCenters.setEnabled(true);
+            JOptionPane.showMessageDialog(this, error.getMessage(),
+                    "No se pudieron cargar los centros de salud", JOptionPane.ERROR_MESSAGE);
+        });
     }
 
     private TreeSet<String> usedDepartments() {

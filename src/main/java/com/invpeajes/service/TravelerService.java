@@ -46,6 +46,8 @@ public class TravelerService {
     public static final double DEFAULT_CORRIDOR_KM = 10;
 
     private static final double EARTH_RADIUS_KM = 6371.0;
+    /** Peajes mínimos que una ruta debe tener en el trayecto para ofrecerla como opción. */
+    private static final int MIN_TOLLS_PER_ROUTE = 2;
     private static final Pattern PHONE = Pattern.compile("^\\d{7,15}$");
 
     private final TollService tollService;
@@ -244,6 +246,44 @@ public class TravelerService {
         }
         distance += distanceKm(lastLat, lastLon, destLat, destLon);
         return new TripPlan(stops, total, distance, withoutRate);
+    }
+
+    /**
+     * Rutas que sirven para ir de un origen a un destino: las que tienen peajes
+     * dentro del corredor entre los dos puntos (el mismo criterio de {@link #planTrip}),
+     * descartando las que solo cruzan el trayecto con un peaje.
+     * Así el viajero solo escoge entre las rutas que de verdad pasan por su trayecto.
+     *
+     * @param tolls      peajes del catálogo
+     * @param originLat  latitud del origen
+     * @param originLon  longitud del origen
+     * @param destLat    latitud del destino
+     * @param destLon    longitud del destino
+     * @param corridorKm ancho del corredor en km
+     * @return IDs de las rutas, primero las que tienen más peajes en el trayecto
+     */
+    public static List<String> routesBetween(List<Toll> tolls, double originLat, double originLon,
+                                             double destLat, double destLon, double corridorKm) {
+        TripPlan inCorridor = planTrip(tolls, Collections.emptyMap(), originLat, originLon,
+                destLat, destLon, corridorKm, null);
+        Map<String, Integer> tollsPerRoute = new HashMap<>();
+        for (TripStop stop : inCorridor.getStops()) {
+            String routeId = stop.getToll().getRouteId();
+            if (routeId != null) {
+                tollsPerRoute.merge(routeId, 1, Integer::sum);
+            }
+        }
+        // Una ruta con un solo peaje en el corredor casi siempre es una vía que solo lo cruza;
+        // se descartan, salvo que no quede ninguna ruta con dos o más.
+        boolean anyWithTwo = tollsPerRoute.values().stream().anyMatch(n -> n >= MIN_TOLLS_PER_ROUTE);
+        List<String> routes = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : tollsPerRoute.entrySet()) {
+            if (!anyWithTwo || e.getValue() >= MIN_TOLLS_PER_ROUTE) {
+                routes.add(e.getKey());
+            }
+        }
+        routes.sort(Comparator.comparing((String id) -> -tollsPerRoute.get(id)).thenComparing(id -> id));
+        return routes;
     }
 
     /**

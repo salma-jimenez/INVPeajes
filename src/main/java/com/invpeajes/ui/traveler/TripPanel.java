@@ -124,6 +124,8 @@ public class TripPanel extends JPanel {
         TravelerUi.styleCombo(category);
         useShortCategoryText(category);
         calculate.addActionListener(e -> calculate());
+        origin.addActionListener(e -> refreshRoutes());
+        destination.addActionListener(e -> refreshRoutes());
 
         JPanel side = new JPanel(new BorderLayout(0, 12));
         side.setOpaque(false);
@@ -278,21 +280,39 @@ public class TripPanel extends JPanel {
         for (VehicleCategory c : catalog.getCategories()) {
             category.addItem(c);
         }
+        refreshRoutes();
+        map.showTolls(catalog.getTolls());
+    }
+
+    /**
+     * Deja en "Ruta" solo las rutas que pasan entre el origen y el destino escogidos
+     * (las que tienen peajes en ese trayecto). Si la ruta que estaba escogida sigue
+     * sirviendo, se conserva.
+     */
+    private void refreshRoutes() {
+        if (catalog == null) {
+            return;
+        }
+        Object previous = route.getSelectedItem();
+        String previousId = previous instanceof RouteOption ? ((RouteOption) previous).id : null;
         route.removeAllItems();
         route.addItem("Cualquiera");
-        List<String> used = new ArrayList<>();
-        for (Toll t : catalog.getTolls()) {
-            if (t.getRouteId() != null && !used.contains(t.getRouteId())) {
-                used.add(t.getRouteId());
+        City from = (City) origin.getSelectedItem();
+        City to = (City) destination.getSelectedItem();
+        if (from == null || to == null || from == to) {
+            return;
+        }
+        List<String> ids = TravelerService.routesBetween(catalog.getTolls(), from.getLatitude(),
+                from.getLongitude(), to.getLatitude(), to.getLongitude(), CORRIDOR_KM);
+        for (String id : ids) {
+            RouteOption option = new RouteOption(id, catalog.routeName(id));
+            route.addItem(option);
+            if (id.equals(previousId)) {
+                route.setSelectedItem(option);
             }
         }
-        List<RouteOption> options = new ArrayList<>();
-        for (String id : used) {
-            options.add(new RouteOption(id, catalog.routeName(id)));
-        }
-        options.sort((a, b) -> TravelerUi.normalize(a.name).compareTo(TravelerUi.normalize(b.name)));
-        options.forEach(route::addItem);
-        map.showTolls(catalog.getTolls());
+        route.setToolTipText(ids.isEmpty() ? "Ninguna ruta con peajes pasa por este trayecto"
+                : ids.size() + (ids.size() == 1 ? " ruta pasa" : " rutas pasan") + " por este trayecto");
     }
 
     /**

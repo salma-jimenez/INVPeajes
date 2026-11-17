@@ -1,5 +1,6 @@
 package com.invpeajes.ui.traveler;
 
+import com.invpeajes.model.HealthCenter;
 import com.invpeajes.model.Toll;
 import com.invpeajes.ui.common.FlatButton;
 import com.invpeajes.ui.common.Theme;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -53,6 +55,7 @@ import org.jxmapviewer.viewer.WaypointPainter;
  *   <li>Con {@link #setOnPick} activo, un clic fuera de los marcadores marca un punto
  *       (se usa para decir dónde está el viajero al pedir asistencia).</li>
  *   <li>{@link #showRoute} dibuja la línea de un viaje.</li>
+ *   <li>{@link #showHealthCenters} agrega los centros de salud públicos (pin rosado con cruz).</li>
  * </ul>
  *
  * @author Salma Jiménez Vega
@@ -72,6 +75,8 @@ public class TollMap extends JPanel {
     private final WaypointPainter<TollPoint> painter = new WaypointPainter<>();
     private final List<TollPoint> points = new ArrayList<>();
     private final List<GeoPosition> route = new ArrayList<>();
+    private final HealthCenterLayer healthLayer = new HealthCenterLayer();
+    private final JLabel healthLegend = new JLabel("Centro de salud público");
     private final JLabel counter = TravelerUi.label(" ", Font.PLAIN, 11, Theme.MUTED);
     private Toll selected;
     private GeoPosition picked;
@@ -107,7 +112,11 @@ public class TollMap extends JPanel {
             @Override
             public String getToolTipText(MouseEvent e) {
                 TollPoint p = pointAt(e.getPoint());
-                return p == null ? null : p.toll.getName() + " · " + TravelerUi.levelText(p.toll.getLevel())
+                if (p == null) {
+                    HealthCenter center = healthLayer.centerAt(this, e.getPoint());
+                    return center == null ? null : HealthCenterLayer.tooltipText(center);
+                }
+                return p.toll.getName() + " · " + TravelerUi.levelText(p.toll.getLevel())
                         + " · " + TravelerUi.pretty(p.toll.getOperationalStatus());
             }
 
@@ -180,9 +189,9 @@ public class TollMap extends JPanel {
             g.setStroke(new BasicStroke(operating ? 2f : 3f));
             g.drawOval(x - r, y - r, r * 2, r * 2);
         });
-        // Primero la ruta y el punto marcado, encima los peajes
+        // Primero la ruta y el punto marcado, luego los centros de salud y encima los peajes
         Painter<JXMapViewer> extras = (Graphics2D g, JXMapViewer m, int w, int h) -> paintExtras(g, m);
-        map.setOverlayPainter(new CompoundPainter<>(extras, painter));
+        map.setOverlayPainter(new CompoundPainter<>(extras, healthLayer, painter));
 
         map.add(zoomButtons(map));
         map.add(legend());
@@ -234,6 +243,12 @@ public class TollMap extends JPanel {
         legend.add(legendItem(TravelerUi.COLOR_UNKNOWN, "Sin dato"));
         legend.add(TravelerUi.label("<html><span style='color:#dc2626'>○</span>&nbsp;Borde rojo: no operativo</html>",
                 Font.PLAIN, 11, Theme.TEXT));
+        healthLegend.setIcon(new ImageIcon(healthLayer.getIcon()));
+        healthLegend.setFont(Theme.font(Font.PLAIN, 11));
+        healthLegend.setForeground(Theme.TEXT);
+        healthLegend.setIconTextGap(4);
+        healthLegend.setVisible(false);
+        legend.add(healthLegend);
         legend.add(counter);
         return legend;
     }
@@ -272,6 +287,37 @@ public class TollMap extends JPanel {
         painter.setWaypoints(new HashSet<>(points));
         counter.setText(tolls.size() + (tolls.size() == 1 ? " peaje en el mapa" : " peajes en el mapa"));
         viewer.repaint();
+    }
+
+    /**
+     * Dibuja los centros de salud públicos. Las sedes con ubicación aproximada (centro del
+     * municipio) se ven semitransparentes.
+     *
+     * @param centers centros a dibujar; lista vacía para quitarlos
+     */
+    public void showHealthCenters(List<HealthCenter> centers) {
+        healthLayer.setCenters(centers);
+        viewer.repaint();
+    }
+
+    /**
+     * Muestra u oculta los centros de salud sin borrarlos.
+     *
+     * @param visible true para dibujarlos
+     */
+    public void setHealthCentersVisible(boolean visible) {
+        healthLayer.setVisible(visible);
+        healthLegend.setVisible(visible);
+        healthLegend.getParent().revalidate();
+        viewer.revalidate();
+        viewer.repaint();
+    }
+
+    /**
+     * @return true si ya se cargaron centros de salud en el mapa
+     */
+    public boolean hasHealthCenters() {
+        return healthLayer.getCount() > 0;
     }
 
     /** Ajusta el zoom para ver todos los peajes dibujados. */
