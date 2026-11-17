@@ -61,6 +61,7 @@ public class CashierFrame extends JFrame {
      */
     public CashierFrame(CashierService service, CashierSession session) {
         super("RutaPeaje Colombia — Caja · Peaje " + session.getTollName());
+        setIconImages(com.invpeajes.ui.common.AppIcon.images());
         this.service = service;
         this.session = session;
 

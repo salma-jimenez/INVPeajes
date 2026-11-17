@@ -80,6 +80,7 @@ public class StationFrame extends JFrame {
      */
     public StationFrame(StationManagerService service, CashierSession session) {
         super("RutaPeaje Colombia — Jefe de estación · Peaje " + session.getTollName());
+        setIconImages(com.invpeajes.ui.common.AppIcon.images());
         this.session = session;
 
         centerPanel = new AssistanceCenterPanel(service, session, this::setBadge, this::markRefreshed);

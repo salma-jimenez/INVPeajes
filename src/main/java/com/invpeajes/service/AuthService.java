@@ -55,8 +55,7 @@ public class AuthService {
 
     private static final String WRONG_EMPLOYEE = "Cédula o contraseña incorrecta";
     private static final String WRONG_TRAVELER = "Correo o contraseña incorrecta";
-    private static final String BLOCKED_EMPLOYEE = "Su cuenta está bloqueada por intentos fallidos. "
-            + "Pida a su jefe de estación o al administrador que la reactive";
+    private static final String BLOCKED_EMPLOYEE = "Cuenta bloqueada. Pide a tu superior que la reactive";
     private static final Pattern EMPLOYEE_ID = Pattern.compile("\\d{6,15}");
     private static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}");
     private static final Pattern NAME = Pattern.compile("[\\p{L} '.-]{2,30}");

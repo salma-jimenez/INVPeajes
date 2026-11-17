@@ -200,6 +200,7 @@ public class LoginFrame extends JFrame {
     public LoginFrame(AuthService auth, CashierService cashier, StationManagerService station,
                       AdminService adminService) {
         super("RutaPeaje Colombia");
+        setIconImages(com.invpeajes.ui.common.AppIcon.images());
         this.auth = auth;
         this.cashier = cashier;
         this.station = station;

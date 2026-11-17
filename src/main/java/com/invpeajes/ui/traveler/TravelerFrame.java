@@ -109,6 +109,7 @@ public class TravelerFrame extends JFrame {
      */
     public TravelerFrame(TravelerService service, Traveler traveler) {
         super("RutaPeaje Colombia — " + (traveler == null ? "Invitado" : "Viajero · " + traveler.getFullName()));
+        setIconImages(com.invpeajes.ui.common.AppIcon.images());
         this.service = service;
         this.traveler = traveler;
 

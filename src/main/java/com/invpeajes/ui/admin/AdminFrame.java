@@ -77,6 +77,7 @@ public class AdminFrame extends JFrame {
      */
     public AdminFrame(AdminService service, CashierSession session) {
         super("RutaPeaje Colombia — Administración");
+        setIconImages(com.invpeajes.ui.common.AppIcon.images());
         this.service = service;
         this.session = session;
 
