@@ -5,6 +5,7 @@ import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceType;
 import com.invpeajes.model.ResourceAvailability;
 import com.invpeajes.persistence.AssistanceResourceDAO;
+import com.invpeajes.persistence.StationDAO;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,10 +25,11 @@ public class AssistanceResourceService {
     private static final int MAX_IDENTIFICATION_LENGTH = 20;
 
     private final AssistanceResourceDAO resourceDAO;
+    private final StationDAO stationDAO;
 
     /** Crea el servicio con su DAO por defecto. */
     public AssistanceResourceService() {
-        this(new AssistanceResourceDAO());
+        this(new AssistanceResourceDAO(), new StationDAO());
     }
 
     /**
@@ -36,7 +38,18 @@ public class AssistanceResourceService {
      * @param resourceDAO DAO de recursos de asistencia
      */
     public AssistanceResourceService(AssistanceResourceDAO resourceDAO) {
+        this(resourceDAO, new StationDAO());
+    }
+
+    /**
+     * Crea el servicio con sus DAO inyectados.
+     *
+     * @param resourceDAO DAO de recursos de asistencia
+     * @param stationDAO  procedimientos del jefe de estación (pkg_estacion)
+     */
+    public AssistanceResourceService(AssistanceResourceDAO resourceDAO, StationDAO stationDAO) {
         this.resourceDAO = resourceDAO;
+        this.stationDAO = stationDAO;
     }
 
     /**
@@ -115,29 +128,35 @@ public class AssistanceResourceService {
     }
 
     /**
-     * Saca un recurso de servicio (mantenimiento, daño...).
+     * Saca un recurso de servicio (mantenimiento, daño...) con
+     * {@code pkg_estacion.Pr_cambiar_disponibilidad_recurso}: la base revisa que el recurso sea
+     * del peaje del jefe.
      *
+     * @param managerId  cédula del jefe de estación
      * @param resourceId recurso a desactivar
      */
-    public void markOutOfService(int resourceId) {
+    public void markOutOfService(String managerId, int resourceId) {
         AssistanceResource resource = get(resourceId);
         if (resource.getAvailability() == ResourceAvailability.IN_SERVICE) {
             throw new ValidationException("El recurso está atendiendo una asistencia; ciérrela primero");
         }
-        resourceDAO.updateAvailability(resourceId, ResourceAvailability.OUT_OF_SERVICE);
+        stationDAO.changeResourceAvailability(managerId, resourceId,
+                ResourceAvailability.OUT_OF_SERVICE.getDbValue());
     }
 
     /**
-     * Vuelve a poner disponible un recurso que estaba fuera de servicio.
+     * Vuelve a poner disponible un recurso que estaba fuera de servicio
+     * ({@code pkg_estacion.Pr_cambiar_disponibilidad_recurso}).
      *
+     * @param managerId  cédula del jefe de estación
      * @param resourceId recurso a reactivar
      */
-    public void reactivate(int resourceId) {
+    public void reactivate(String managerId, int resourceId) {
         AssistanceResource resource = get(resourceId);
         if (resource.getAvailability() != ResourceAvailability.OUT_OF_SERVICE) {
             throw new ValidationException("Solo se pueden reactivar recursos fuera de servicio");
         }
-        resourceDAO.updateAvailability(resourceId, ResourceAvailability.AVAILABLE);
+        stationDAO.changeResourceAvailability(managerId, resourceId, ResourceAvailability.AVAILABLE.getDbValue());
     }
 
     /**

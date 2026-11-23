@@ -1,6 +1,9 @@
 package com.invpeajes.ui.traveler;
 
+import com.invpeajes.model.Concessionaire;
+import com.invpeajes.model.Department;
 import com.invpeajes.model.HealthCenter;
+import com.invpeajes.model.Route;
 import com.invpeajes.model.Toll;
 import com.invpeajes.service.HealthCenterService;
 import com.invpeajes.service.TravelerService;
@@ -14,10 +17,8 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -27,6 +28,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
@@ -34,6 +36,15 @@ import javax.swing.event.DocumentListener;
  * Mapa de peajes con filtros por departamento, ruta y concesionario, buscador por
  * nombre y la ficha del peaje que se escoja. Una casilla permite mostrar también los
  * centros de salud públicos (se cargan de la base de datos la primera vez que se activa).
+ *
+ * <p>Todos los datos salen de funciones de la base que devuelven un cursor:</p>
+ * <ul>
+ *   <li>Opciones de los filtros: {@code fun_departamentos_con_peajes},
+ *       {@code fun_rutas_con_peajes} y {@code fun_concesionarios_con_peajes}.</li>
+ *   <li>Cada vez que cambia un filtro o se escribe en el buscador:
+ *       {@code fun_filtrar_peajes(departamento, ruta, concesionario, texto)}.</li>
+ *   <li>Centros de salud: {@code fun_listar_centros_salud}.</li>
+ * </ul>
  *
  * @author Salma Jiménez Vega
  * @version 1.0
@@ -43,6 +54,7 @@ public class MapPanel extends JPanel {
     private static final String ALL_DEPARTMENTS = "Todos los departamentos";
     private static final String ALL_ROUTES = "Todas las rutas";
     private static final String ALL_CONCESSIONAIRES = "Todos los concesionarios";
+    private static final int SEARCH_DELAY_MS = 350;
 
     private final TollMap map = new TollMap();
     private final TollDetailPanel detail;
@@ -52,8 +64,13 @@ public class MapPanel extends JPanel {
     private final JComboBox<Option> concessionaire = new JComboBox<>();
     private final JCheckBox healthCenters = new JCheckBox("Centros de salud");
     private final HealthCenterService healthCenterService = new HealthCenterService();
+    private final TravelerService service;
+    /** Espera a que el viajero deje de escribir antes de consultar la base. */
+    private final Timer searchDelay = new Timer(SEARCH_DELAY_MS, e -> applyFilters(false));
     private Catalog catalog;
     private boolean filling;
+    /** Número de la última consulta de filtros, para ignorar respuestas viejas. */
+    private int filterRequest;
 
     /**
      * @param service servicio del viajero
@@ -62,23 +79,25 @@ public class MapPanel extends JPanel {
         super(new BorderLayout(0, 14));
         setBackground(Theme.BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(18, 22, 18, 22));
+        this.service = service;
         detail = new TollDetailPanel(service);
+        searchDelay.setRepeats(false);
 
         search.setToolTipText("Buscar peaje por nombre");
         search.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                applyFilters(false);
+                searchDelay.restart();
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                applyFilters(false);
+                searchDelay.restart();
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                applyFilters(false);
+                searchDelay.restart();
             }
         });
         for (JComboBox<Option> combo : List.of(department, route, concessionaire)) {
@@ -91,7 +110,7 @@ public class MapPanel extends JPanel {
         healthCenters.setToolTipText("Mostrar los hospitales y centros de salud públicos en el mapa");
         healthCenters.addActionListener(e -> toggleHealthCenters());
         FlatButton clear = Theme.secondaryButton("Limpiar");
-        clear.addActionListener(e -> clearFilters());
+        clear.addActionListener(e -> clearFilters(null));
 
         JPanel filters = new JPanel(new GridBagLayout());
         filters.setBackground(java.awt.Color.WHITE);
@@ -140,32 +159,45 @@ public class MapPanel extends JPanel {
     }
 
     /**
-     * Llena los filtros y el mapa con el catálogo cargado.
+     * Guarda el catálogo (para los nombres de la ficha) y llena los filtros con las opciones que
+     * da la base: {@code fun_departamentos_con_peajes}, {@code fun_rutas_con_peajes} y
+     * {@code fun_concesionarios_con_peajes}. Después muestra todos los peajes.
      *
      * @param catalog catálogo de peajes
      */
     public void setCatalog(Catalog catalog) {
         this.catalog = catalog;
         detail.setCatalog(catalog);
-        filling = true;
-        fill(department, ALL_DEPARTMENTS, catalog.getDepartments(), usedDepartments());
-        fill(route, ALL_ROUTES, catalog.getRoutes(), usedRoutes());
-        concessionaire.removeAllItems();
-        concessionaire.addItem(new Option(null, ALL_CONCESSIONAIRES));
-        TreeSet<Integer> used = new TreeSet<>();
-        for (Toll t : catalog.getTolls()) {
-            if (t.getConcessionaireId() != null) {
-                used.add(t.getConcessionaireId());
+        Async.run(() -> new Object[]{service.departmentsWithTolls(), service.routesWithTolls(),
+                service.concessionairesWithTolls()}, data -> {
+            filling = true;
+            department.removeAllItems();
+            department.addItem(new Option(null, ALL_DEPARTMENTS));
+            for (Department d : castList(data[0], Department.class)) {
+                department.addItem(new Option(d.getDepartmentId(), d.getName()));
             }
+            route.removeAllItems();
+            route.addItem(new Option(null, ALL_ROUTES));
+            for (Route r : castList(data[1], Route.class)) {
+                route.addItem(new Option(r.getRouteId(), r.getName()));
+            }
+            concessionaire.removeAllItems();
+            concessionaire.addItem(new Option(null, ALL_CONCESSIONAIRES));
+            for (Concessionaire c : castList(data[2], Concessionaire.class)) {
+                concessionaire.addItem(new Option(String.valueOf(c.getConcessionaireId()), c.getName()));
+            }
+            filling = false;
+            applyFilters(true);
+        }, error -> JOptionPane.showMessageDialog(this, error.getMessage(),
+                "No se pudieron cargar los filtros", JOptionPane.ERROR_MESSAGE));
+    }
+
+    private static <T> List<T> castList(Object value, Class<T> type) {
+        List<T> list = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            list.add(type.cast(item));
         }
-        List<Option> options = new ArrayList<>();
-        for (Integer id : used) {
-            options.add(new Option(String.valueOf(id), catalog.concessionaireName(id)));
-        }
-        options.sort(Comparator.comparing(o -> TravelerUi.normalize(o.text)));
-        options.forEach(concessionaire::addItem);
-        filling = false;
-        applyFilters(true);
+        return list;
     }
 
     /**
@@ -174,8 +206,7 @@ public class MapPanel extends JPanel {
      * @param toll peaje
      */
     public void focus(Toll toll) {
-        clearFilters();
-        map.select(toll, true);
+        clearFilters(toll);
         detail.showToll(toll);
     }
 
@@ -205,77 +236,53 @@ public class MapPanel extends JPanel {
         });
     }
 
-    private TreeSet<String> usedDepartments() {
-        TreeSet<String> used = new TreeSet<>();
-        for (Toll t : catalog.getTolls()) {
-            if (t.getDepartmentId() != null) {
-                used.add(t.getDepartmentId());
-            }
-        }
-        return used;
-    }
-
-    private TreeSet<String> usedRoutes() {
-        TreeSet<String> used = new TreeSet<>();
-        for (Toll t : catalog.getTolls()) {
-            if (t.getRouteId() != null) {
-                used.add(t.getRouteId());
-            }
-        }
-        return used;
-    }
-
-    private static void fill(JComboBox<Option> combo, String allText, Map<String, String> names,
-                             TreeSet<String> used) {
-        combo.removeAllItems();
-        combo.addItem(new Option(null, allText));
-        List<Option> options = new ArrayList<>();
-        for (String id : used) {
-            options.add(new Option(id, names.getOrDefault(id, id)));
-        }
-        options.sort(Comparator.comparing(o -> TravelerUi.normalize(o.text)));
-        options.forEach(combo::addItem);
-    }
-
-    private void clearFilters() {
+    private void clearFilters(Toll toSelect) {
         filling = true;
         search.setText("");
         department.setSelectedIndex(department.getItemCount() > 0 ? 0 : -1);
         route.setSelectedIndex(route.getItemCount() > 0 ? 0 : -1);
         concessionaire.setSelectedIndex(concessionaire.getItemCount() > 0 ? 0 : -1);
         filling = false;
-        applyFilters(true);
+        searchDelay.stop(); // el texto se borró aquí mismo, no hace falta otra consulta
+        applyFilters(toSelect == null, toSelect);
     }
 
+    /**
+     * Pide a la base los peajes que cumplen los filtros escogidos con la función
+     * {@code fun_filtrar_peajes} (por medio de {@code TravelerService.filterTolls} →
+     * {@code TollService.filterTolls} → {@code TollDAO.filter}) y los dibuja en el mapa.
+     */
     private void applyFilters(boolean refit) {
+        applyFilters(refit, null);
+    }
+
+    /**
+     * Igual que {@link #applyFilters(boolean)}; cuando llega la respuesta deja seleccionado
+     * {@code toSelect} (si no es nulo).
+     */
+    private void applyFilters(boolean refit, Toll toSelect) {
         if (catalog == null || filling) {
             return;
         }
-        String text = TravelerUi.normalize(search.getText());
         String dep = selectedId(department);
         String rte = selectedId(route);
         String conc = selectedId(concessionaire);
-        List<Toll> shown = new ArrayList<>();
-        for (Toll t : catalog.getTolls()) {
-            if (!text.isEmpty() && !TravelerUi.normalize(t.getName()).contains(text)) {
-                continue;
+        Integer concId = conc == null ? null : Integer.valueOf(conc);
+        String text = search.getText();
+        int request = ++filterRequest;
+        Async.run(() -> service.filterTolls(dep, rte, concId, text), (List<Toll> shown) -> {
+            if (request != filterRequest) {
+                return; // llegó tarde: ya se pidió otra combinación de filtros
             }
-            if (dep != null && !dep.equals(t.getDepartmentId())) {
-                continue;
+            map.showTolls(shown);
+            if (refit) {
+                map.fitAll();
             }
-            if (rte != null && !rte.equals(t.getRouteId())) {
-                continue;
+            if (toSelect != null) {
+                map.select(toSelect, true);
             }
-            if (conc != null && (t.getConcessionaireId() == null
-                    || !conc.equals(String.valueOf(t.getConcessionaireId())))) {
-                continue;
-            }
-            shown.add(t);
-        }
-        map.showTolls(shown);
-        if (refit) {
-            map.fitAll();
-        }
+        }, error -> JOptionPane.showMessageDialog(this, error.getMessage(),
+                "No se pudieron filtrar los peajes", JOptionPane.ERROR_MESSAGE));
     }
 
     private static String selectedId(JComboBox<Option> combo) {

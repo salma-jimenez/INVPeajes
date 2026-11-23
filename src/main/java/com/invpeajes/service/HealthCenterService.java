@@ -46,6 +46,8 @@ public class HealthCenterService {
     private static final double EARTH_RADIUS_KM = 6371.0;
     private static final double KM_PER_DEGREE = 111.0;
     private static final int MAX_NAME_LENGTH = 300;
+    /** Separación mínima entre puntos del recorrido al simplificarlo. */
+    private static final double MIN_STEP_KM = 0.3;
 
     private final HealthCenterDAO healthCenterDAO;
 
@@ -174,21 +176,8 @@ public class HealthCenterService {
         if (radiusKm <= 0) {
             throw new IllegalArgumentException("El radio de búsqueda debe ser mayor que 0 km");
         }
-        // Primero se filtra en Oracle con un rectángulo y luego se mide la distancia real
-        double deltaLat = radiusKm / KM_PER_DEGREE;
-        double deltaLon = radiusKm / (KM_PER_DEGREE * Math.max(0.1, Math.cos(Math.toRadians(latitude))));
-        List<HealthCenter> candidates = healthCenterDAO.findInArea(
-                latitude - deltaLat, latitude + deltaLat, longitude - deltaLon, longitude + deltaLon);
-
-        List<HealthCenter> nearby = new ArrayList<>();
-        for (HealthCenter c : candidates) {
-            if (distanceKm(latitude, longitude, c.getLatitude(), c.getLongitude()) <= radiusKm) {
-                nearby.add(c);
-            }
-        }
-        nearby.sort(Comparator.comparingDouble(
-                c -> distanceKm(latitude, longitude, c.getLatitude(), c.getLongitude())));
-        return nearby;
+        // La base filtra y mide la distancia (función fun_centros_cercanos con fun_distancia_km).
+        return healthCenterDAO.findNearby(latitude, longitude, radiusKm);
     }
 
     /**
@@ -203,6 +192,98 @@ public class HealthCenterService {
             throw new IllegalArgumentException("Debe indicar el peaje");
         }
         return findNearby(toll.getLatitude(), toll.getLongitude(), radiusKm);
+    }
+
+    /**
+     * Centros de salud que quedan cerca de un recorrido (por ejemplo, la ruta de un viaje),
+     * ordenados en el orden en que se encuentran al viajar.
+     *
+     * Primero se traen de Oracle los centros del rectángulo que encierra el recorrido y luego
+     * se mide la distancia de cada uno a la línea del recorrido, tramo por tramo.
+     *
+     * @param path  puntos del recorrido en orden, cada uno {latitud, longitud}
+     * @param maxKm distancia máxima a la vía en kilómetros (mayor que 0)
+     * @return centros cercanos con los km del viaje en que aparecen y su distancia a la vía
+     * @throws IllegalArgumentException si el recorrido tiene menos de 2 puntos o maxKm no es válido
+     */
+    public List<CenterOnRoute> findAlongRoute(List<double[]> path, double maxKm) {
+        if (path == null || path.size() < 2) {
+            throw new IllegalArgumentException("El recorrido debe tener al menos dos puntos");
+        }
+        if (maxKm <= 0) {
+            throw new IllegalArgumentException("La distancia máxima debe ser mayor que 0 km");
+        }
+        List<double[]> points = simplify(path);
+        double[] cumulativeKm = new double[points.size()];
+        double minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+        for (int i = 0; i < points.size(); i++) {
+            double[] p = points.get(i);
+            minLat = Math.min(minLat, p[0]);
+            maxLat = Math.max(maxLat, p[0]);
+            minLon = Math.min(minLon, p[1]);
+            maxLon = Math.max(maxLon, p[1]);
+            if (i > 0) {
+                double[] q = points.get(i - 1);
+                cumulativeKm[i] = cumulativeKm[i - 1] + distanceKm(q[0], q[1], p[0], p[1]);
+            }
+        }
+        double deltaLat = maxKm / KM_PER_DEGREE;
+        double deltaLon = maxKm / (KM_PER_DEGREE * Math.max(0.1, Math.cos(Math.toRadians((minLat + maxLat) / 2))));
+        List<HealthCenter> candidates = healthCenterDAO.findInArea(
+                minLat - deltaLat, maxLat + deltaLat, minLon - deltaLon, maxLon + deltaLon);
+
+        List<CenterOnRoute> result = new ArrayList<>();
+        for (HealthCenter c : candidates) {
+            CenterOnRoute nearest = nearestOnPath(c, points, cumulativeKm);
+            if (nearest.getKmFromRoute() <= maxKm) {
+                result.add(nearest);
+            }
+        }
+        result.sort(Comparator.comparingDouble(CenterOnRoute::getKmFromOrigin));
+        return result;
+    }
+
+    /** Quita puntos muy seguidos (menos de 300 m) para que el cálculo sea rápido. */
+    private static List<double[]> simplify(List<double[]> path) {
+        List<double[]> points = new ArrayList<>();
+        points.add(path.get(0));
+        for (int i = 1; i < path.size() - 1; i++) {
+            double[] last = points.get(points.size() - 1);
+            double[] p = path.get(i);
+            if (distanceKm(last[0], last[1], p[0], p[1]) >= MIN_STEP_KM) {
+                points.add(p);
+            }
+        }
+        points.add(path.get(path.size() - 1));
+        return points;
+    }
+
+    /** Punto de la vía más cercano a un centro: distancia a la vía y km del viaje en ese punto. */
+    private static CenterOnRoute nearestOnPath(HealthCenter c, List<double[]> points, double[] cumulativeKm) {
+        // Proyección plana local alrededor del centro: suficiente para pocos kilómetros
+        double kmPerDegLon = KM_PER_DEGREE * Math.cos(Math.toRadians(c.getLatitude()));
+        double bestDistance = Double.MAX_VALUE;
+        double bestKm = 0;
+        for (int i = 1; i < points.size(); i++) {
+            double[] a = points.get(i - 1);
+            double[] b = points.get(i);
+            double ax = (a[1] - c.getLongitude()) * kmPerDegLon;
+            double ay = (a[0] - c.getLatitude()) * KM_PER_DEGREE;
+            double bx = (b[1] - c.getLongitude()) * kmPerDegLon;
+            double by = (b[0] - c.getLatitude()) * KM_PER_DEGREE;
+            double dx = bx - ax;
+            double dy = by - ay;
+            double length2 = dx * dx + dy * dy;
+            double t = length2 == 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / length2));
+            double px = ax + t * dx;
+            double py = ay + t * dy;
+            double distance = Math.sqrt(px * px + py * py);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestKm = cumulativeKm[i - 1] + t * (cumulativeKm[i] - cumulativeKm[i - 1]);
+            }
+        }
+        return new CenterOnRoute(c, bestKm, bestDistance);
     }
 
     /**
@@ -255,6 +336,40 @@ public class HealthCenterService {
         if (value == null || !allowed.contains(value)) {
             throw new IllegalArgumentException("Valor no válido para " + fieldName + ": " + value
                     + ". Valores permitidos: " + allowed);
+        }
+    }
+
+    /** Centro de salud ubicado sobre un recorrido. */
+    public static final class CenterOnRoute {
+
+        private final HealthCenter center;
+        private final double kmFromOrigin;
+        private final double kmFromRoute;
+
+        /**
+         * @param center       centro de salud
+         * @param kmFromOrigin km del viaje (desde el origen) en que queda el centro
+         * @param kmFromRoute  distancia del centro a la vía, en km
+         */
+        public CenterOnRoute(HealthCenter center, double kmFromOrigin, double kmFromRoute) {
+            this.center = center;
+            this.kmFromOrigin = kmFromOrigin;
+            this.kmFromRoute = kmFromRoute;
+        }
+
+        /** @return centro de salud */
+        public HealthCenter getCenter() {
+            return center;
+        }
+
+        /** @return km del viaje (desde el origen) en que queda el centro */
+        public double getKmFromOrigin() {
+            return kmFromOrigin;
+        }
+
+        /** @return distancia del centro a la vía, en km */
+        public double getKmFromRoute() {
+            return kmFromRoute;
         }
     }
 }

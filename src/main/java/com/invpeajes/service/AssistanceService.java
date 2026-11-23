@@ -4,7 +4,6 @@ import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceHistory;
 import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceStatus;
-import com.invpeajes.model.ResourceAvailability;
 import com.invpeajes.persistence.AssistanceDAO;
 
 import java.math.BigDecimal;
@@ -14,6 +13,13 @@ import java.util.regex.Pattern;
 /**
  * Reglas de negocio para la gestión de auxilios viales: registro,
  * asignación de recursos, avance de estados, cierre y cancelación.
+ *
+ * <p>La solicitud se registra con {@code pkg_asistencias.Pr_solicitar_asistencia} y cada cambio
+ * de estado con {@code pkg_asistencias.Pr_cambiar_estado_asistencia}, que recibe la cédula del
+ * jefe de estación y revisa en la base que la asistencia sea de su peaje y que el cambio esté
+ * permitido ({@code fun_transicion_valida}). El historial y la disponibilidad del recurso los
+ * actualiza el trigger {@code trg_historial_asistencia}. Las validaciones de aquí se mantienen
+ * para dar mensajes claros antes de ir a la base.</p>
  *
  * @author Salomejimenez
  */
@@ -57,6 +63,9 @@ public class AssistanceService {
      */
     public int register(Assistance assistance) {
         validateRequest(assistance);
+        if (assistance.getContactPhone() == null || assistance.getContactPhone().isBlank()) {
+            throw new ValidationException("Debe indicar un teléfono de contacto");
+        }
         assistance.setCurrentStatus(AssistanceStatus.REGISTERED);
         assistanceDAO.insert(assistance);
         return assistance.getAssistanceId();
@@ -78,10 +87,11 @@ public class AssistanceService {
      * Asigna un recurso (grúa, ambulancia...) y pasa la asistencia a ASSIGNED.
      * El recurso queda EN_SERVICIO hasta que la asistencia se cierre.
      *
+     * @param managerId    cédula del jefe de estación
      * @param assistanceId asistencia a atender
      * @param resourceId   recurso de asistencia asignado
      */
-    public void assignResource(int assistanceId, int resourceId) {
+    public void assignResource(String managerId, int assistanceId, int resourceId) {
         Assistance assistance = get(assistanceId);
         AssistanceResource resource = resourceService.get(resourceId);
         if (!resource.isAvailable()) {
@@ -97,55 +107,59 @@ public class AssistanceService {
                     + " y la asistencia la atiende el peaje " + assistance.getTollId());
         }
         assistance.setResourceId(resourceId);
-        applyChange(assistance, AssistanceStatus.ASSIGNED,
+        applyChange(managerId, assistance, AssistanceStatus.ASSIGNED,
                 "Recurso " + resource.getIdentification() + " asignado");
     }
 
     /**
      * Marca que el recurso va en camino al incidente.
      *
+     * @param managerId    cédula del jefe de estación
      * @param assistanceId asistencia en curso
      */
-    public void markEnRoute(int assistanceId) {
-        applyChange(get(assistanceId), AssistanceStatus.EN_ROUTE, "Recurso en camino");
+    public void markEnRoute(String managerId, int assistanceId) {
+        applyChange(managerId, get(assistanceId), AssistanceStatus.EN_ROUTE, "Recurso en camino");
     }
 
     /**
      * Marca que el recurso llegó y está atendiendo el incidente.
      *
+     * @param managerId    cédula del jefe de estación
      * @param assistanceId asistencia en curso
      */
-    public void startService(int assistanceId) {
-        applyChange(get(assistanceId), AssistanceStatus.IN_PROGRESS, "Atención iniciada");
+    public void startService(String managerId, int assistanceId) {
+        applyChange(managerId, get(assistanceId), AssistanceStatus.IN_PROGRESS, "Atención iniciada");
     }
 
     /**
      * Cierra la asistencia como ATTENDED registrando su costo final.
      *
+     * @param managerId    cédula del jefe de estación
      * @param assistanceId asistencia a cerrar
      * @param cost         costo del servicio (0 si es gratuito)
      * @param notes        detalle del cierre
      */
-    public void complete(int assistanceId, BigDecimal cost, String notes) {
+    public void complete(String managerId, int assistanceId, BigDecimal cost, String notes) {
         if (cost == null || cost.signum() < 0) {
             throw new ValidationException("El costo no puede ser negativo");
         }
         Assistance assistance = get(assistanceId);
         assistance.setCost(cost);
-        applyChange(assistance, AssistanceStatus.ATTENDED, textOrDefault(notes, "Asistencia atendida"));
+        applyChange(managerId, assistance, AssistanceStatus.ATTENDED, textOrDefault(notes, "Asistencia atendida"));
     }
 
     /**
      * Cancela una asistencia que aún no ha empezado a atenderse.
      *
+     * @param managerId    cédula del jefe de estación
      * @param assistanceId asistencia a cancelar
      * @param reason       razón de la cancelación (obligatoria)
      */
-    public void cancel(int assistanceId, String reason) {
+    public void cancel(String managerId, int assistanceId, String reason) {
         if (reason == null || reason.trim().isEmpty()) {
             throw new ValidationException("Debe indicar el motivo de la cancelación");
         }
-        applyChange(get(assistanceId), AssistanceStatus.CANCELLED, reason.trim());
+        applyChange(managerId, get(assistanceId), AssistanceStatus.CANCELLED, reason.trim());
     }
 
     /**
@@ -231,7 +245,7 @@ public class AssistanceService {
         assistanceDAO.delete(assistanceId);
     }
 
-    private void applyChange(Assistance assistance, AssistanceStatus next, String notes) {
+    private void applyChange(String managerId, Assistance assistance, AssistanceStatus next, String notes) {
         AssistanceStatus previous = assistance.getCurrentStatus();
         if (!previous.canChangeTo(next)) {
             throw new ValidationException(String.format(
@@ -241,18 +255,11 @@ public class AssistanceService {
         if (next == AssistanceStatus.ASSIGNED && assistance.getResourceId() == null) {
             throw new ValidationException("Debe asignar un recurso antes de pasar a ASIGNADA");
         }
+        // La base vuelve a revisar el permiso del jefe y la transición (fun_transicion_valida).
+        assistanceDAO.changeStatus(managerId, assistance.getAssistanceId(), next.getDbValue(), notes,
+                next == AssistanceStatus.ASSIGNED ? assistance.getResourceId() : null,
+                next == AssistanceStatus.ATTENDED ? assistance.getCost() : null);
         assistance.setCurrentStatus(next);
-        assistanceDAO.changeStatus(assistance, previous, notes, resourceAvailabilityAfter(next));
-    }
-
-    private ResourceAvailability resourceAvailabilityAfter(AssistanceStatus next) {
-        if (next == AssistanceStatus.ASSIGNED) {
-            return ResourceAvailability.IN_SERVICE;
-        }
-        if (next == AssistanceStatus.ATTENDED || next == AssistanceStatus.CANCELLED) {
-            return ResourceAvailability.AVAILABLE;
-        }
-        return null;
     }
 
     private String describeAllowed(AssistanceStatus status) {

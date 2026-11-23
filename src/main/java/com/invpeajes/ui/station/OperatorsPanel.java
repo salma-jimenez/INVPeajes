@@ -288,7 +288,7 @@ public class OperatorsPanel extends JPanel {
 
     private void save(EmployeeForm form, TollUser user) {
         Async.run(() -> {
-            service.staff().update(form.read(user));
+            service.staff().updateOperator(session.getOperatorId(), form.read(user));
             return Boolean.TRUE;
         }, ok -> {
             Forms.info(this, "Empleados del peaje", "Cambios guardados.");
@@ -302,15 +302,15 @@ public class OperatorsPanel extends JPanel {
                 activate ? "Podrá volver a iniciar sesión y abrir turno en la caja."
                         : "Ya no podrá iniciar sesión. Sus tiquetes y turnos se conservan. Puedes volver a "
                         + "activarlo cuando quieras.", activate ? "Activar" : "Desactivar", !activate,
-                () -> service.staff().setActive(user.getIdNumber(), activate), this::refresh);
+                () -> service.staff().setActive(session.getOperatorId(), user.getIdNumber(), activate), this::refresh);
     }
 
     private void registerDialog() {
         EmployeeForm form = new EmployeeForm(true, true, null);
         Forms.dialog(this, "Registrar operador de caseta", "Quedará en el peaje " + session.getTollName()
                 + ". Su contraseña inicial será su cédula; la puede cambiar después.", form, "Registrar operador",
-                false, () -> service.staff().register(form.read(null),
-                        com.invpeajes.service.AuthService.ROLE_OPERATOR, session.getTollId()),
+                false, () -> service.staff().registerOperator(session.getOperatorId(), form.read(null),
+                        session.getTollId()),
                 user -> {
                     refresh();
                     Forms.info(this, "Empleados del peaje", user.getFullName() + " quedó registrado. Entra con su "

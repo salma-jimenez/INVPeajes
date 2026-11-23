@@ -482,7 +482,7 @@ public class AssistanceCenterPanel extends JPanel {
                 assign.addActionListener(e -> {
                     AssistanceResource r = (AssistanceResource) combo.getSelectedItem();
                     if (r != null) {
-                        run(() -> service.assistances().assignResource(id, r.getResourceId()));
+                        run(() -> service.assistances().assignResource(session.getOperatorId(), id, r.getResourceId()));
                     }
                 });
                 actions.add(Box.createVerticalStrut(8));
@@ -491,13 +491,13 @@ public class AssistanceCenterPanel extends JPanel {
             }
             case ASSIGNED:
                 actions.add(left(wide(Theme.primaryButton("Marcar en camino →"),
-                        () -> service.assistances().markEnRoute(id))));
+                        () -> service.assistances().markEnRoute(session.getOperatorId(), id))));
                 actions.add(Box.createVerticalStrut(8));
                 actions.add(left(cancelButton(id)));
                 break;
             case EN_ROUTE:
                 actions.add(left(wide(Theme.primaryButton("Llegó: iniciar atención →"),
-                        () -> service.assistances().startService(id))));
+                        () -> service.assistances().startService(session.getOperatorId(), id))));
                 actions.add(Box.createVerticalStrut(8));
                 actions.add(left(cancelButton(id)));
                 break;
@@ -528,7 +528,7 @@ public class AssistanceCenterPanel extends JPanel {
             String reason = JOptionPane.showInputDialog(this, "Motivo de la cancelación:", "Cancelar solicitud #" + id,
                     JOptionPane.QUESTION_MESSAGE);
             if (reason != null) {
-                run(() -> service.assistances().cancel(id, reason));
+                run(() -> service.assistances().cancel(session.getOperatorId(), id, reason));
             }
         });
         return cancel;
@@ -569,7 +569,7 @@ public class AssistanceCenterPanel extends JPanel {
             showError(new IllegalArgumentException("El costo debe ser un número"));
             return;
         }
-        run(() -> service.assistances().complete(id, value, notes.getText().trim()));
+        run(() -> service.assistances().complete(session.getOperatorId(), id, value, notes.getText().trim()));
     }
 
     /** Ejecuta una acción sobre la asistencia y recarga el tablero. */

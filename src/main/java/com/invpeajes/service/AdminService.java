@@ -9,6 +9,7 @@ import com.invpeajes.model.TollBooth;
 import com.invpeajes.model.TollRate;
 import com.invpeajes.model.TollUser;
 import com.invpeajes.persistence.AdminDAO;
+import com.invpeajes.persistence.AdministrationDAO;
 import com.invpeajes.persistence.TollBoothDAO;
 import com.invpeajes.service.TravelerService.Catalog;
 import java.math.BigDecimal;
@@ -37,6 +38,13 @@ import java.util.stream.Collectors;
  *
  * Un peaje con cobros o empleados no se borra: se pasa a NO_OPERATIVO para conservar su historial.
  *
+ * Los cambios se hacen con el paquete {@code pkg_administracion} de la base de datos, que
+ * vuelve a revisar con la cédula del administrador que el peaje sea de su entidad
+ * ({@code Pr_validar_admin_peaje}). Por eso los métodos que cambian datos reciben al
+ * administrador ({@link TollUser}) y no solo su entidad. Los datos que los procedimientos no
+ * reciben (kilómetro, sentido, teléfonos, ficha, COLPASS...) se guardan justo después con una
+ * actualización normal.
+ *
  * @author Salomejimenez
  * @version 1.0
  */
@@ -57,6 +65,7 @@ public class AdminService {
     private final AdminDAO adminDAO;
     private final StaffService staffService;
     private final TollBoothDAO boothDAO;
+    private final AdministrationDAO administrationDAO;
 
     /** Dos peajes de una misma ruta que están muy cerca. */
     public static final class ClosePair {
@@ -132,7 +141,7 @@ public class AdminService {
     /** Crea el servicio con la base de datos. */
     public AdminService() {
         this(new TollService(), new TollRateService(), new TravelerService(), new AdminDAO(),
-                new StaffService(), new TollBoothDAO());
+                new StaffService(), new TollBoothDAO(), new AdministrationDAO());
     }
 
     /**
@@ -143,15 +152,18 @@ public class AdminService {
      * @param adminDAO Consultas del administrador.
      * @param staffService Empleados.
      * @param boothDAO Casetas.
+     * @param administrationDAO Procedimientos del paquete pkg_administracion.
      */
     public AdminService(TollService tollService, TollRateService rateService, TravelerService catalogService,
-                        AdminDAO adminDAO, StaffService staffService, TollBoothDAO boothDAO) {
+                        AdminDAO adminDAO, StaffService staffService, TollBoothDAO boothDAO,
+                        AdministrationDAO administrationDAO) {
         this.tollService = tollService;
         this.rateService = rateService;
         this.catalogService = catalogService;
         this.adminDAO = adminDAO;
         this.staffService = staffService;
         this.boothDAO = boothDAO;
+        this.administrationDAO = administrationDAO;
     }
 
     /** @return Servicio de empleados (para cambiar la contraseña propia). */
@@ -310,28 +322,34 @@ public class AdminService {
     // ------------------------------------------------------------------ Peajes
 
     /**
-     * Registra un peaje nuevo de la entidad. Queda "Sin tarifa" hasta que se le carguen sus
-     * tarifas.
-     * @param level Entidad del administrador.
+     * Registra un peaje nuevo de la entidad con {@code pkg_administracion.Pr_agregar_peaje} (la
+     * base pone el ID y la entidad). Queda "Sin tarifa" hasta que se le carguen sus tarifas.
+     * @param admin Administrador que lo registra.
      * @param data Datos del peaje (el ID, el nivel y el estado se ponen aquí).
      * @param acceptsColpass true si tiene carril de TAG.
      * @return El peaje guardado, con su ID.
      */
-    public Toll registerToll(String level, Toll data, boolean acceptsColpass) {
-        int id = adminDAO.nextTollId();
+    public Toll registerToll(TollUser admin, Toll data, boolean acceptsColpass) {
+        String level = admin.getEntity();
+        tollService.validateData(copy(data, 0, level, NO_RATES, acceptsColpass));
+        int id = administrationDAO.addToll(admin.getIdNumber(), data.getName(), data.getLatitude(),
+                data.getLongitude(), data.getDepartmentId(), null, data.getRouteId(), data.getConcessionaireId());
+        // El procedimiento lo crea OPERATIVO; aquí queda SIN_TARIFA con el resto de sus datos.
         Toll toll = copy(data, id, level, NO_RATES, acceptsColpass);
-        tollService.registerToll(toll);
+        tollService.updateToll(toll);
         return toll;
     }
 
     /**
-     * Guarda los cambios de un peaje de la entidad. El nivel no cambia.
-     * @param level Entidad del administrador.
+     * Guarda los cambios de un peaje de la entidad con {@code pkg_administracion.Pr_modificar_peaje}
+     * (nombre, ubicación, estado, ruta y concesionario). El nivel no cambia.
+     * @param admin Administrador que hace el cambio.
      * @param data Datos nuevos (con su ID).
      * @param acceptsColpass true si tiene carril de TAG.
      * @return El peaje guardado.
      */
-    public Toll updateToll(String level, Toll data, boolean acceptsColpass) {
+    public Toll updateToll(TollUser admin, Toll data, boolean acceptsColpass) {
+        String level = admin.getEntity();
         Toll current = ownToll(level, data.getTollId());
         // Datos que el formulario no muestra: se conservan los que ya tenía.
         if (data.getAniId() == null) {
@@ -347,12 +365,11 @@ public class AdminService {
         if (TollService.STATUS_OPERATIONAL.equals(toll.getOperationalStatus()) && rates(toll.getTollId()).isEmpty()) {
             throw new ValidationException("No se puede poner Operativo: el peaje todavía no tiene tarifas");
         }
-        if (!toll.getOperationalStatus().equals(current.getOperationalStatus())) {
-            tollService.updateToll(toll);
-            tollService.changeTollStatus(toll.getTollId(), toll.getOperationalStatus());
-        } else {
-            tollService.updateToll(toll);
-        }
+        tollService.validateData(toll);
+        administrationDAO.modifyToll(admin.getIdNumber(), toll.getTollId(), toll.getName(), toll.getLatitude(),
+                toll.getLongitude(), toll.getOperationalStatus(), toll.getRouteId(), toll.getConcessionaireId());
+        // Lo que el procedimiento no recibe (kilómetro, sentido, teléfonos, COLPASS...).
+        tollService.updateToll(toll);
         return toll;
     }
 
@@ -366,33 +383,34 @@ public class AdminService {
     }
 
     /**
-     * Borra un peaje sin cobros ni empleados, con sus tarifas y casetas.
-     * @param level Entidad del administrador.
+     * Borra un peaje sin cobros, asistencias ni empleados, con sus tarifas, casetas y recursos
+     * ({@code pkg_administracion.Pr_eliminar_peaje}).
+     * @param admin Administrador que lo borra.
      * @param tollId ID del peaje.
      * @throws ValidationException Si tiene cobros o empleados (debe pasarse a No operativo).
      */
-    public void deleteToll(String level, int tollId) {
-        ownToll(level, tollId);
+    public void deleteToll(TollUser admin, int tollId) {
+        ownToll(admin.getEntity(), tollId);
         TollUsage usage = usage(tollId);
         if (!usage.canDelete()) {
             throw new ValidationException("El peaje tiene cobros o empleados registrados: pásalo a No operativo");
         }
-        adminDAO.deleteToll(tollId);
+        administrationDAO.deleteToll(admin.getIdNumber(), tollId);
     }
 
     /**
-     * Cambia el estado de un peaje (ej. a NO_OPERATIVO). Si deja de estar operativo, sus casetas
-     * activas se desactivan.
-     * @param level Entidad del administrador.
+     * Cambia el estado de un peaje (ej. a NO_OPERATIVO) con {@code Pr_modificar_peaje}. Si deja
+     * de estar operativo, el trigger {@code trg_peaje_estado} desactiva sus casetas.
+     * @param admin Administrador que hace el cambio.
      * @param tollId ID del peaje.
      * @param status Estado nuevo.
      */
-    public void changeTollStatus(String level, int tollId, String status) {
-        ownToll(level, tollId);
+    public void changeTollStatus(TollUser admin, int tollId, String status) {
+        ownToll(admin.getEntity(), tollId);
         if (TollService.STATUS_OPERATIONAL.equals(status) && rates(tollId).isEmpty()) {
             throw new ValidationException("No se puede poner Operativo: el peaje todavía no tiene tarifas");
         }
-        tollService.changeTollStatus(tollId, status);
+        administrationDAO.changeTollStatus(admin.getIdNumber(), tollId, status);
     }
 
     // ------------------------------------------------------------------ Tarifas
@@ -410,16 +428,18 @@ public class AdminService {
     }
 
     /**
-     * Guarda las tarifas de un peaje. Las categorías que ya tenían precio se actualizan y las
-     * nuevas se registran. Si el peaje estaba "Sin tarifa" y quedan las 7 categorías, pasa a
-     * "Operativo". La fuente es la entidad (solo ANI o INVIAS; las demás quedan vacías).
-     * @param level Entidad del administrador.
+     * Guarda las tarifas de un peaje con {@code pkg_administracion.Pr_actualizar_tarifa} (crea la
+     * tarifa si no existe o cambia su precio; la fuente es la entidad). Si la fecha de vigencia no
+     * es hoy, se ajusta después. Si el peaje estaba "Sin tarifa" y quedan las 7 categorías, pasa a
+     * "Operativo".
+     * @param admin Administrador que hace el cambio.
      * @param tollId ID del peaje.
      * @param prices Precio por categoría (solo las que cambian o se agregan).
      * @param effectiveDate Desde cuándo rigen.
      * @return true si el peaje pasó a Operativo.
      */
-    public boolean saveRates(String level, int tollId, Map<Integer, BigDecimal> prices, LocalDate effectiveDate) {
+    public boolean saveRates(TollUser admin, int tollId, Map<Integer, BigDecimal> prices, LocalDate effectiveDate) {
+        String level = admin.getEntity();
         Toll toll = ownToll(level, tollId);
         if (effectiveDate == null) {
             throw new ValidationException("Escribe desde qué fecha rigen las tarifas");
@@ -436,16 +456,16 @@ public class AdminService {
                 current.put(r.getCategoryId(), r);
             }
             for (Map.Entry<Integer, BigDecimal> e : prices.entrySet()) {
+                administrationDAO.updateRate(admin.getIdNumber(), tollId, e.getKey(), e.getValue());
                 TollRate rate = new TollRate(tollId, e.getKey(), e.getValue(), effectiveDate, source);
-                if (current.containsKey(e.getKey())) {
+                if (!LocalDate.now().equals(effectiveDate)) {
+                    // El procedimiento la deja vigente desde hoy; aquí se pone la fecha escogida.
                     rateService.update(rate);
-                } else {
-                    rateService.register(rate);
                 }
                 current.put(e.getKey(), rate);
             }
             if (NO_RATES.equals(toll.getOperationalStatus()) && current.size() >= CATEGORY_COUNT) {
-                tollService.changeTollStatus(tollId, TollService.STATUS_OPERATIONAL);
+                administrationDAO.changeTollStatus(admin.getIdNumber(), tollId, TollService.STATUS_OPERATIONAL);
                 return true;
             }
             return false;
@@ -469,14 +489,14 @@ public class AdminService {
     /**
      * Agrega una caseta con el siguiente número libre. Empieza activa si el peaje está operativo;
      * si no, inactiva.
-     * @param level Entidad del administrador.
+     * @param admin Administrador que hace el cambio.
      * @param tollId ID del peaje.
      * @param direction Sentido (ej. ORIENTE_OCCIDENTE), o null.
      * @param paymentType EFECTIVO, MIXTO o COLPASS.
      * @return La caseta agregada.
      */
-    public TollBooth addBooth(String level, int tollId, String direction, String paymentType) {
-        Toll toll = ownToll(level, tollId);
+    public TollBooth addBooth(TollUser admin, int tollId, String direction, String paymentType) {
+        Toll toll = ownToll(admin.getEntity(), tollId);
         int number = booths(tollId).stream().mapToInt(TollBooth::getBoothNumber).max().orElse(0) + 1;
         String status = TollService.STATUS_OPERATIONAL.equals(toll.getOperationalStatus())
                 ? TollService.BOOTH_ACTIVE : TollService.BOOTH_INACTIVE;
@@ -487,11 +507,11 @@ public class AdminService {
 
     /**
      * Cambia el sentido y la forma de pago de una caseta (el estado lo maneja el jefe de estación).
-     * @param level Entidad del administrador.
+     * @param admin Administrador que hace el cambio.
      * @param booth Caseta con los datos nuevos.
      */
-    public void updateBooth(String level, TollBooth booth) {
-        ownToll(level, booth.getTollId());
+    public void updateBooth(TollUser admin, TollBooth booth) {
+        ownToll(admin.getEntity(), booth.getTollId());
         TollBooth current = boothDAO.findById(booth.getBoothId())
                 .orElseThrow(() -> new NoSuchElementException("No existe la caseta " + booth.getBoothId()));
         booth.setStatus(current.getStatus());
@@ -500,12 +520,12 @@ public class AdminService {
 
     /**
      * Borra una caseta sin cobros.
-     * @param level Entidad del administrador.
+     * @param admin Administrador que hace el cambio.
      * @param booth Caseta.
      * @throws ValidationException Si ya tiene cobros.
      */
-    public void deleteBooth(String level, TollBooth booth) {
-        ownToll(level, booth.getTollId());
+    public void deleteBooth(TollUser admin, TollBooth booth) {
+        ownToll(admin.getEntity(), booth.getTollId());
         long tickets = adminDAO.ticketsOfBooth(booth.getBoothId());
         if (tickets > 0) {
             throw new ValidationException("La caseta " + booth.getBoothNumber() + " tiene " + tickets
@@ -525,50 +545,52 @@ public class AdminService {
     }
 
     /**
-     * Registra un jefe de estación en un peaje de la entidad.
-     * @param level Entidad del administrador.
+     * Registra un jefe de estación en un peaje de la entidad ({@code Pr_agregar_jefe}).
+     * @param admin Administrador que lo registra.
      * @param user Datos del jefe.
      * @param tollId Peaje.
      * @return El jefe registrado.
      */
-    public TollUser registerManager(String level, TollUser user, int tollId) {
-        ownToll(level, tollId);
-        return staffService.register(user, AuthService.ROLE_MANAGER, tollId);
+    public TollUser registerManager(TollUser admin, TollUser user, int tollId) {
+        ownToll(admin.getEntity(), tollId);
+        return staffService.registerManager(admin.getIdNumber(), user, tollId);
     }
 
     /**
      * Guarda los datos de un jefe de estación de la entidad (puede cambiarlo de peaje, dentro de
-     * la entidad).
-     * @param level Entidad del administrador.
+     * la entidad) con {@code Pr_modificar_jefe}.
+     * @param admin Administrador que hace el cambio.
      * @param user Jefe con los datos nuevos.
      */
-    public void updateManager(String level, TollUser user) {
+    public void updateManager(TollUser admin, TollUser user) {
+        String level = admin.getEntity();
         ownManager(level, user.getIdNumber());
         if (user.getTollId() == null) {
             throw new ValidationException("Escoge el peaje del jefe de estación");
         }
         ownToll(level, user.getTollId());
-        staffService.update(user);
+        staffService.updateManager(admin.getIdNumber(), user);
     }
 
     /**
-     * Activa o desactiva a un jefe de estación de la entidad.
-     * @param level Entidad del administrador.
+     * Activa o desactiva a un jefe de estación de la entidad. Activar usa
+     * {@code pkg_seguridad.Pr_reactivar_usuario}.
+     * @param admin Administrador que hace el cambio.
      * @param idNumber Cédula del jefe.
      * @param active true para activar.
      */
-    public void setManagerActive(String level, String idNumber, boolean active) {
-        ownManager(level, idNumber);
-        staffService.setActive(idNumber, active);
+    public void setManagerActive(TollUser admin, String idNumber, boolean active) {
+        ownManager(admin.getEntity(), idNumber);
+        staffService.setActive(admin.getIdNumber(), idNumber, active);
     }
 
     /**
      * Vuelve a poner la cédula como contraseña de un jefe de estación de la entidad.
-     * @param level Entidad del administrador.
+     * @param admin Administrador que hace el cambio.
      * @param idNumber Cédula del jefe.
      */
-    public void resetManagerPassword(String level, String idNumber) {
-        ownManager(level, idNumber);
+    public void resetManagerPassword(TollUser admin, String idNumber) {
+        ownManager(admin.getEntity(), idNumber);
         staffService.resetPassword(idNumber);
     }
 

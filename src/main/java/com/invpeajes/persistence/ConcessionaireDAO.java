@@ -1,6 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.Concessionaire;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -9,6 +10,7 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import oracle.jdbc.OracleTypes;
 
 /**
  * Implementación JDBC del DAO de Concesionario sobre Oracle (tabla CONCESIONARIO).
@@ -29,7 +31,10 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
 
     private static final String SQL_FIND_BY_ID = SQL_SELECT + " WHERE ID_CONCESIONARIO = ?";
 
-    private static final String SQL_FIND_ALL = SQL_SELECT + " ORDER BY NOMBRE";
+    /** Todos los concesionarios, por nombre (función con cursor). */
+    private static final String SQL_LISTAR_CONCESIONARIOS = "{ ? = call fun_listar_concesionarios }";
+    /** Concesionarios que tienen peajes: opciones del filtro del mapa (función con cursor). */
+    private static final String SQL_CONCESIONARIOS_CON_PEAJES = "{ ? = call fun_concesionarios_con_peajes }";
 
     private static final String SQL_FIND_BY_NAME = SQL_SELECT + " WHERE NOMBRE = ?";
 
@@ -91,13 +96,45 @@ public class ConcessionaireDAO implements CrudDAO<Concessionaire, Integer> {
     @Override
     public List<Concessionaire> findAll() {
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
-             ResultSet rs = ps.executeQuery()) {
+             CallableStatement cs = conn.prepareCall(SQL_LISTAR_CONCESIONARIOS)) {
 
-            return mapList(rs);
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_listar_concesionarios
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapList(rs);
+            }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar los concesionarios", e);
+        }
+    }
+
+    /**
+     * Concesionarios que tienen al menos un peaje ({@code fun_concesionarios_con_peajes}).
+     * Son las opciones del filtro "Concesionario" del mapa.
+     *
+     * @return concesionarios con peajes, por nombre (solo ID y nombre)
+     * @throws DataAccessException si falla la consulta
+     */
+    public List<Concessionaire> findWithTolls() {
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(SQL_CONCESIONARIOS_CON_PEAJES)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR);
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                List<Concessionaire> concessionaires = new ArrayList<>();
+                while (rs.next()) {
+                    concessionaires.add(new Concessionaire(rs.getInt("ID_CONCESIONARIO"), rs.getString("NOMBRE"),
+                            null, null, null, null, null, null));
+                }
+                return concessionaires;
+            }
+
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudo listar los concesionarios con peajes", e);
         }
     }
 

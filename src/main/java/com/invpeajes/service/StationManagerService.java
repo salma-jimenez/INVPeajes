@@ -11,6 +11,8 @@ import com.invpeajes.model.Toll;
 import com.invpeajes.model.TollStatistics;
 import com.invpeajes.model.TollStatistics.Point;
 import com.invpeajes.model.TollStatistics.Total;
+import com.invpeajes.persistence.DatabaseFunctionsDAO;
+import com.invpeajes.persistence.StationDAO;
 import com.invpeajes.persistence.StatisticsDAO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,6 +30,8 @@ import java.util.Map;
  *
  * Los cambios de estado de las asistencias y de los recursos los hacen {@link AssistanceService} y
  * {@link AssistanceResourceService}; este servicio solo los reúne para las pantallas del jefe.
+ * El estado de las casetas se cambia con {@code pkg_estacion.Pr_cambiar_estado_caseta} y el
+ * recaudo de hoy lo da la función {@code fun_recaudo_dia} de la base.
  *
  * @author Salomejimenez
  * @version 1.0
@@ -42,6 +46,8 @@ public class StationManagerService {
     private final AssistanceResourceService resourceService;
     private final TollService tollService;
     private final StaffService staffService;
+    private final StationDAO stationDAO;
+    private final DatabaseFunctionsDAO functionsDAO;
 
     /** Resumen que ve el jefe al iniciar sesión. */
     public static final class Summary {
@@ -116,6 +122,8 @@ public class StationManagerService {
         this.resourceService = resourceService;
         this.tollService = tollService;
         this.staffService = staffService;
+        this.stationDAO = new StationDAO();
+        this.functionsDAO = new DatabaseFunctionsDAO();
     }
 
     /** @return Servicio de empleados (operadores del peaje y contraseña propia). */
@@ -151,16 +159,19 @@ public class StationManagerService {
     }
 
     /**
-     * Cambia el estado de una caseta del peaje (ACTIVA, MANTENIMIENTO o INACTIVA).
+     * Cambia el estado de una caseta del peaje (ACTIVA, MANTENIMIENTO o INACTIVA) con
+     * {@code pkg_estacion.Pr_cambiar_estado_caseta}. La base no deja apagar una caseta con un
+     * turno abierto ni activarla si el peaje no está operativo.
+     * @param managerId Cédula del jefe de estación.
      * @param tollId Peaje del jefe.
      * @param booth Caseta.
      * @param status Estado nuevo.
      */
-    public void changeBoothStatus(int tollId, com.invpeajes.model.TollBooth booth, String status) {
+    public void changeBoothStatus(String managerId, int tollId, com.invpeajes.model.TollBooth booth, String status) {
         if (booth.getTollId() != tollId) {
             throw new ValidationException("La caseta no es de tu peaje");
         }
-        tollService.changeBoothStatus(booth.getBoothId(), status);
+        stationDAO.changeBoothStatus(managerId, booth.getBoothId(), status);
     }
 
     /** @return Servicio de asistencias (asignar, cambiar estado, cancelar). */
@@ -197,8 +208,8 @@ public class StationManagerService {
         List<AssistanceResource> resources = resourceService.listByToll(tollId);
         int available = (int) resources.stream()
                 .filter(r -> r.getAvailability() == ResourceAvailability.AVAILABLE).count();
-        LocalDate today = LocalDate.now();
-        BigDecimal revenue = statisticsDAO.total(tollId, today, today.plusDays(1)).getRevenue();
+        // Recaudo de hoy en Colombia: función fun_recaudo_dia de la base.
+        BigDecimal revenue = functionsDAO.dayRevenue(tollId, null);
         return new Summary(unattended, available, resources.size(), revenue);
     }
 

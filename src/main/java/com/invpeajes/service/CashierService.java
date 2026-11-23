@@ -396,17 +396,27 @@ public class CashierService {
         }
     }
 
-    /** Guarda el tiquete; si dos cajeros toman el mismo consecutivo, reintenta con el siguiente. */
+    /**
+     * Guarda el tiquete con {@code pkg_tiquetes.Pr_registrar_tiquete}: la base usa la caseta del
+     * turno abierto, revisa el método de pago, busca la tarifa y numera el tiquete. Si dos cajeros
+     * toman el mismo consecutivo al mismo tiempo, reintenta con el siguiente.
+     */
     private Ticket saveTicket(CashierSession session, int categoryId, String plate, String method, String tag) {
         for (int attempt = 1; ; attempt++) {
             try {
-                return ticketService.registerPayment(session.getTollId(), session.getBooth().getBoothId(),
-                        plate, categoryId, method, tag, BigDecimal.ZERO, session.getOperatorId());
+                return ticketService.registerWithProcedure(session.getOperatorId(), plate, categoryId, method,
+                        BigDecimal.ZERO);
             } catch (SQLException e) {
-                if (e.getErrorCode() != ORA_UNIQUE_VIOLATION || attempt >= MAX_ATTEMPTS) {
+                if (!isDuplicate(e) || attempt >= MAX_ATTEMPTS) {
                     throw new DataAccessException("No se pudo registrar el cobro", e);
                 }
             }
         }
+    }
+
+    /** ORA-00001; con consultas en paralelo Oracle lo envuelve dentro de ORA-12801. */
+    private static boolean isDuplicate(SQLException e) {
+        return e.getErrorCode() == ORA_UNIQUE_VIOLATION
+                || (e.getMessage() != null && e.getMessage().contains("ORA-00001"));
     }
 }

@@ -265,7 +265,7 @@ public class BoothsPanel extends JPanel {
 
     private void changeStatus(BoothActivity a, String status) {
         Async.run(() -> {
-            service.changeBoothStatus(session.getTollId(), a.getBooth(), status);
+            service.changeBoothStatus(session.getOperatorId(), session.getTollId(), a.getBooth(), status);
             return Boolean.TRUE;
         }, ok -> refresh(), error -> Forms.info(this, "Casetas del peaje", error.getMessage()));
     }

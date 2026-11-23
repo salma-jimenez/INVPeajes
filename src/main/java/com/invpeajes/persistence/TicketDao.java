@@ -1,11 +1,14 @@
 package com.invpeajes.persistence;
  
 import com.invpeajes.model.Ticket;
+import java.math.BigDecimal;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
  
@@ -40,6 +43,14 @@ public class TicketDao {
  
     private static final String DELETE = "DELETE FROM PEAJE.TIQUETE WHERE ID_TIQUETE = ?";
  
+    /**
+     * Cobro con {@code pkg_tiquetes.Pr_registrar_tiquete}: usa la caseta del turno abierto del
+     * operador, valida el método de pago, busca la tarifa ({@code fun_tarifa}), numera el tiquete
+     * ({@code fun_siguiente_consecutivo}) y lo guarda. Devuelve el ID por el último parámetro.
+     */
+    private static final String REGISTER_PROCEDURE =
+            "{call pkg_tiquetes.Pr_registrar_tiquete(?, ?, ?, ?, ?, ?)}";
+
     private static final String NEXT_SEQUENCE =
             "SELECT NVL(MAX(CONSECUTIVO), 0) + 1 FROM PEAJE.TIQUETE WHERE PREFIJO = ?";
  
@@ -66,6 +77,34 @@ public class TicketDao {
         }
     }
  
+    /**
+     * Cobra un vehículo con el procedimiento {@code pkg_tiquetes.Pr_registrar_tiquete}.
+     * La base pone la caseta (la del turno abierto), la tarifa, el prefijo, el consecutivo y la
+     * fecha y hora de Colombia.
+     *
+     * @param operatorId cédula del operador con turno abierto
+     * @param plate      placa del vehículo
+     * @param categoryId categoría del vehículo
+     * @param method     EFECTIVO, TARJETA o TAG_COLPASS
+     * @param services   valor de servicios adicionales (0 si no hay)
+     * @return ID del tiquete creado
+     * @throws SQLException si la base rechaza el cobro (sin turno, método no permitido, sin tarifa...)
+     */
+    public long registerWithProcedure(String operatorId, String plate, int categoryId, String method,
+                                      BigDecimal services) throws SQLException {
+        try (Connection connection = DatabaseConnection.getConnection();
+             CallableStatement call = connection.prepareCall(REGISTER_PROCEDURE)) {
+            call.setString(1, operatorId);
+            call.setString(2, plate);
+            call.setInt(3, categoryId);
+            call.setString(4, method);
+            call.setBigDecimal(5, services == null ? BigDecimal.ZERO : services);
+            call.registerOutParameter(6, Types.NUMERIC);
+            call.execute();
+            return call.getLong(6);
+        }
+    }
+
     /**
      * Busca un tiquete por su identificador.
      *

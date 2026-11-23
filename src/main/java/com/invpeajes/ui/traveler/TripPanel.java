@@ -1,7 +1,11 @@
 package com.invpeajes.ui.traveler;
 
+import com.invpeajes.model.HealthCenter;
+import com.invpeajes.model.Route;
 import com.invpeajes.model.Toll;
 import com.invpeajes.model.VehicleCategory;
+import com.invpeajes.service.HealthCenterService;
+import com.invpeajes.service.HealthCenterService.CenterOnRoute;
 import com.invpeajes.service.RouteService;
 import com.invpeajes.service.TravelerService;
 import com.invpeajes.service.TravelerService.Catalog;
@@ -26,6 +30,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -33,6 +38,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.ImageIcon;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -73,6 +79,10 @@ public class TripPanel extends JPanel {
             + " se tomaron los peajes cercanos a la línea entre origen y destino, así que el resultado"
             + " es aproximado.</html>";
     private static final int RADIUS = 12;
+    /** Distancia máxima de un centro de salud a la vía para mostrarlo en el viaje. */
+    private static final double HEALTH_MAX_KM = 5;
+    /** Si no hay hospitales cerca, cuántos centros de salud se listan como alternativa. */
+    private static final int MAX_OTHER_CENTERS = 8;
 
     private final TravelerService service;
     private final Consumer<Toll> onShowOnMap;
@@ -82,6 +92,11 @@ public class TripPanel extends JPanel {
     private final JComboBox<VehicleCategory> category = new JComboBox<>();
     private final FlatButton calculate = Theme.primaryButton("Calcular viaje");
     private final TollMap map = new TollMap();
+    private final HealthCenterService healthService = new HealthCenterService();
+    private final ImageIcon healthIcon = new ImageIcon(new HealthCenterLayer().getIcon());
+    private List<CenterOnRoute> nearbyCenters = Collections.emptyList();
+    /** Mensaje de la sección de salud mientras carga o si falla; null cuando ya hay datos. */
+    private String healthStatus;
 
     // Resumen
     private final JLabel summaryCaption = label("Total a pagar", Font.PLAIN, 12, Theme.SIDEBAR_MUTED);
@@ -104,6 +119,8 @@ public class TripPanel extends JPanel {
     private Toll cardToll;
 
     private Catalog catalog;
+    /** Número de la última búsqueda de rutas, para ignorar respuestas viejas. */
+    private int routesRequest;
     private TripPlan plan;
     private VehicleCategory planCategory;
 
@@ -285,9 +302,10 @@ public class TripPanel extends JPanel {
     }
 
     /**
-     * Deja en "Ruta" solo las rutas que pasan entre el origen y el destino escogidos
-     * (las que tienen peajes en ese trayecto). Si la ruta que estaba escogida sigue
-     * sirviendo, se conserva.
+     * Deja en "Ruta" solo las rutas que pasan entre el origen y el destino escogidos.
+     * Las pide a la base con la función {@code fun_rutas_entre} (por medio de
+     * {@code TravelerService.routesBetween} → {@code RouteDAO.findBetween}). Si la ruta que estaba
+     * escogida sigue sirviendo, se conserva.
      */
     private void refreshRoutes() {
         if (catalog == null) {
@@ -295,24 +313,30 @@ public class TripPanel extends JPanel {
         }
         Object previous = route.getSelectedItem();
         String previousId = previous instanceof RouteOption ? ((RouteOption) previous).id : null;
-        route.removeAllItems();
-        route.addItem("Cualquiera");
         City from = (City) origin.getSelectedItem();
         City to = (City) destination.getSelectedItem();
+        int request = ++routesRequest;
+        route.removeAllItems();
+        route.addItem("Cualquiera");
         if (from == null || to == null || from == to) {
             return;
         }
-        List<String> ids = TravelerService.routesBetween(catalog.getTolls(), from.getLatitude(),
-                from.getLongitude(), to.getLatitude(), to.getLongitude(), CORRIDOR_KM);
-        for (String id : ids) {
-            RouteOption option = new RouteOption(id, catalog.routeName(id));
-            route.addItem(option);
-            if (id.equals(previousId)) {
-                route.setSelectedItem(option);
+        route.setToolTipText("Buscando las rutas del trayecto...");
+        Async.run(() -> service.routesBetween(from.getLatitude(), from.getLongitude(),
+                to.getLatitude(), to.getLongitude(), CORRIDOR_KM), (List<Route> routes) -> {
+            if (request != routesRequest) {
+                return; // ya se cambió el origen o el destino
             }
-        }
-        route.setToolTipText(ids.isEmpty() ? "Ninguna ruta con peajes pasa por este trayecto"
-                : ids.size() + (ids.size() == 1 ? " ruta pasa" : " rutas pasan") + " por este trayecto");
+            for (Route r : routes) {
+                RouteOption option = new RouteOption(r.getRouteId(), r.getName());
+                route.addItem(option);
+                if (r.getRouteId().equals(previousId)) {
+                    route.setSelectedItem(option);
+                }
+            }
+            route.setToolTipText(routes.isEmpty() ? "Ninguna ruta con peajes pasa por este trayecto"
+                    : routes.size() + (routes.size() == 1 ? " ruta pasa" : " rutas pasan") + " por este trayecto");
+        }, error -> route.setToolTipText("No se pudieron cargar las rutas: " + error.getMessage()));
     }
 
     /**
@@ -342,19 +366,22 @@ public class TripPanel extends JPanel {
         }
         Object r = route.getSelectedItem();
         String routeId = r instanceof RouteOption ? ((RouteOption) r).id : null;
+        nearbyCenters = Collections.emptyList();
+        healthStatus = null;
+        map.showHealthCenters(Collections.emptyList());
         calculate.setEnabled(false);
         calculate.setText("Calculando...");
         Async.run(() -> {
-            Map<Integer, BigDecimal> prices = service.pricesFor(cat.getCategoryId());
-            // Primero la ruta real por carretera; si el servicio no responde, el cálculo aproximado
+            // Primero la ruta real por carretera; si el servicio no responde, el cálculo aproximado.
+            // Los peajes y sus precios salen de la base: fun_peajes_en_area o fun_peajes_corredor.
             RouteService.RoadRoute road = RouteService.findRoute(from.getLatitude(), from.getLongitude(),
                     to.getLatitude(), to.getLongitude());
             if (road != null) {
-                return TravelerService.planTripOnRoad(catalog.getTolls(), prices, road, ROAD_MATCH_METERS, routeId);
+                return service.planTripOnRoad(road, ROAD_MATCH_METERS, routeId, cat.getCategoryId());
             }
-            return TravelerService.planTrip(catalog.getTolls(), prices, from.getLatitude(), from.getLongitude(),
-                    to.getLatitude(), to.getLongitude(), CORRIDOR_KM, routeId);
-        }, result -> {
+            return service.planTrip(from.getLatitude(), from.getLongitude(), to.getLatitude(), to.getLongitude(),
+                    CORRIDOR_KM, routeId, cat.getCategoryId());
+        }, (TripPlan result) -> {
             calculate.setEnabled(true);
             calculate.setText("Calcular viaje");
             show(result, cat, from, to);
@@ -408,6 +435,94 @@ public class TripPanel extends JPanel {
         map.showTolls(shown);
         map.showRoute(path);
         selectToll(null);
+        loadHealthCenters(path);
+    }
+
+    /**
+     * Busca en segundo plano los centros de salud a menos de {@link #HEALTH_MAX_KM} de la
+     * ruta, los dibuja en el mapa y los agrega a la lista del viaje.
+     */
+    private void loadHealthCenters(List<GeoPosition> path) {
+        if (path.size() < 2) {
+            return;
+        }
+        List<double[]> points = new ArrayList<>();
+        for (GeoPosition p : path) {
+            points.add(new double[]{p.getLatitude(), p.getLongitude()});
+        }
+        TripPlan forPlan = plan;
+        healthStatus = "Buscando centros de salud cerca de la ruta...";
+        fillItinerary();
+        Async.run(() -> healthService.findAlongRoute(points, HEALTH_MAX_KM), (List<CenterOnRoute> found) -> {
+            if (plan != forPlan) {
+                return; // ya se calculó otro viaje
+            }
+            nearbyCenters = found;
+            healthStatus = null;
+            List<HealthCenter> centers = new ArrayList<>();
+            for (CenterOnRoute c : found) {
+                centers.add(c.getCenter());
+            }
+            map.showHealthCenters(centers);
+            map.setHealthCentersVisible(true);
+            fillItinerary();
+        }, error -> {
+            if (plan != forPlan) {
+                return;
+            }
+            healthStatus = "No se pudieron cargar los centros de salud: " + error.getMessage();
+            fillItinerary();
+        });
+    }
+
+    /** Sección "Hospitales cerca de la ruta" al final de la lista del viaje. */
+    private void addHealthSection() {
+        JLabel title = label(" ", Font.BOLD, 13, Theme.TEXT);
+        title.setIcon(healthIcon);
+        title.setIconTextGap(8);
+        title.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER),
+                BorderFactory.createEmptyBorder(12, 16, 4, 16)));
+        title.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        itinerary.add(left(title));
+        if (healthStatus != null) {
+            title.setText("Centros de salud cerca de la ruta");
+            itinerary.add(left(healthNote(healthStatus)));
+            return;
+        }
+        List<CenterOnRoute> hospitals = new ArrayList<>();
+        for (CenterOnRoute c : nearbyCenters) {
+            if (HealthCenterService.TYPE_HOSPITAL.equals(c.getCenter().getType())) {
+                hospitals.add(c);
+            }
+        }
+        if (!hospitals.isEmpty()) {
+            title.setText("Hospitales cerca de la ruta (" + hospitals.size() + ")");
+            hospitals.forEach(c -> itinerary.add(new HealthRow(c)));
+        } else if (!nearbyCenters.isEmpty()) {
+            title.setText("No hay hospitales cerca · centros de salud");
+            nearbyCenters.stream()
+                    .sorted(java.util.Comparator.comparingDouble(CenterOnRoute::getKmFromRoute))
+                    .limit(MAX_OTHER_CENTERS)
+                    .sorted(java.util.Comparator.comparingDouble(CenterOnRoute::getKmFromOrigin))
+                    .forEach(c -> itinerary.add(new HealthRow(c)));
+        } else {
+            title.setText("Centros de salud cerca de la ruta");
+            itinerary.add(left(healthNote("No hay centros de salud públicos a menos de "
+                    + (int) HEALTH_MAX_KM + " km de la vía.")));
+            return;
+        }
+        int others = nearbyCenters.size() - hospitals.size();
+        if (!hospitals.isEmpty() && others > 0) {
+            itinerary.add(left(healthNote("En el mapa también están " + others
+                    + " centros y puestos de salud cercanos (pin rosado).")));
+        }
+    }
+
+    private static JLabel healthNote(String text) {
+        JLabel l = label("<html>" + text + "</html>", Font.PLAIN, 12, Theme.MUTED);
+        l.setBorder(BorderFactory.createEmptyBorder(2, 16, 8, 16));
+        return l;
     }
 
     /** Arma la lista del viaje (o un mensaje si todavía no se ha calculado). */
@@ -436,6 +551,7 @@ public class TripPanel extends JPanel {
                 itinerary.add(left(none));
             }
             itinerary.add(new EndRow(to == null ? "Destino" : to.getName()));
+            addHealthSection();
         }
         itinerary.revalidate();
         itinerary.repaint();
@@ -603,6 +719,41 @@ public class TripPanel extends JPanel {
             ring.setPreferredSize(new Dimension(RADIUS * 2, RADIUS * 2));
             add(ring, BorderLayout.WEST);
             add(TravelerUi.label(city, Font.BOLD, 14, Theme.TEXT), BorderLayout.CENTER);
+        }
+    }
+
+    /**
+     * Fila de un centro de salud del viaje: nombre, km del viaje en que queda, distancia a la
+     * vía y municipio. Al hacer clic, el mapa se acerca a él.
+     */
+    private final class HealthRow extends JPanel {
+        HealthRow(CenterOnRoute item) {
+            super(new BorderLayout(10, 0));
+            HealthCenter c = item.getCenter();
+            setOpaque(false);
+            setAlignmentX(LEFT_ALIGNMENT);
+            setBorder(BorderFactory.createEmptyBorder(5, 16, 5, 16));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            JLabel name = label("<html>" + c.getName() + "</html>", Font.BOLD, 12, Theme.TEXT);
+            String where = c.hasExactLocation() ? "a " + TravelerUi.km(item.getKmFromRoute()) + " de la vía"
+                    : "ubicación aproximada";
+            JLabel info = label("Km " + Math.round(item.getKmFromOrigin()) + " del viaje · " + where
+                    + " · " + TravelerUi.pretty(c.getMunicipality()), Font.PLAIN, 11, Theme.MUTED);
+            JPanel text = new JPanel(new GridLayout(2, 1));
+            text.setOpaque(false);
+            text.add(name);
+            text.add(info);
+            add(text, BorderLayout.CENTER);
+            String phone = c.getPhone() == null || c.getPhone().isBlank() ? "" : "<br>Tel. " + c.getPhone();
+            setToolTipText("<html><b>" + c.getName() + "</b><br>" + c.getType() + " · " + c.getMunicipality()
+                    + ", " + c.getDepartment() + "<br>" + TravelerUi.orDash(c.getAddress()) + phone + "</html>");
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    map.centerOn(c.getLatitude(), c.getLongitude());
+                }
+            });
         }
     }
 

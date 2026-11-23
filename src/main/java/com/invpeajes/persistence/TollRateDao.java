@@ -1,6 +1,7 @@
 package com.invpeajes.persistence;
  
 import com.invpeajes.model.TollRate;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -8,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import oracle.jdbc.OracleTypes;
  
 /**
  * Acceso a datos de la tabla {@code PEAJE.PEAJE_CATEGORIA}.
@@ -23,6 +25,11 @@ public class TollRateDao {
     private static final String SELECT_COLUMNS =
             "SELECT ID_PEAJE, ID_CATEGORIA, PRECIO, VIGENTE_DESDE, FUENTE FROM PEAJE.PEAJE_CATEGORIA";
  
+    /** Tarifas de un peaje, una por categoría (función con cursor). */
+    private static final String SQL_TARIFAS_PEAJE = "{ ? = call fun_tarifas_peaje(?) }";
+    /** Precio de cada peaje para una categoría (función con cursor). */
+    private static final String SQL_TARIFAS_CATEGORIA = "{ ? = call fun_tarifas_categoria(?) }";
+
     private static final String INSERT =
             "INSERT INTO PEAJE.PEAJE_CATEGORIA (PRECIO, VIGENTE_DESDE, FUENTE, ID_PEAJE, ID_CATEGORIA) "
             + "VALUES (?, ?, ?, ?, ?)";
@@ -92,11 +99,35 @@ public class TollRateDao {
      * @throws SQLException si ocurre un error en la consulta
      */
     public List<TollRate> findByTollId(int tollId) throws SQLException {
-        String sql = SELECT_COLUMNS + " WHERE ID_PEAJE = ? ORDER BY ID_CATEGORIA";
         try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, tollId);
-            try (ResultSet result = statement.executeQuery()) {
+             CallableStatement cs = connection.prepareCall(SQL_TARIFAS_PEAJE)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_tarifas_peaje
+            cs.setInt(2, tollId);                           // x_peaje
+            cs.execute();
+
+            try (ResultSet result = (ResultSet) cs.getObject(1)) {
+                return mapRows(result);
+            }
+        }
+    }
+
+    /**
+     * Precio de cada peaje para una categoría ({@code fun_tarifas_categoria}).
+     *
+     * @param categoryId categoría vehicular
+     * @return una tarifa por peaje que tenga precio para esa categoría
+     * @throws SQLException si ocurre un error en la consulta
+     */
+    public List<TollRate> findByCategory(int categoryId) throws SQLException {
+        try (Connection connection = DatabaseConnection.getConnection();
+             CallableStatement cs = connection.prepareCall(SQL_TARIFAS_CATEGORIA)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_tarifas_categoria
+            cs.setInt(2, categoryId);                       // x_categoria
+            cs.execute();
+
+            try (ResultSet result = (ResultSet) cs.getObject(1)) {
                 return mapRows(result);
             }
         }

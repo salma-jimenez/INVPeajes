@@ -1,6 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.HealthCenter;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,6 +9,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import oracle.jdbc.OracleTypes;
 
 /**
  * Implementación JDBC del DAO de HealthCenter sobre Oracle (tabla CENTRO_SALUD).
@@ -33,7 +35,12 @@ public class HealthCenterDAO implements CrudDAO<HealthCenter, Integer> {
 
     private static final String SQL_FIND_BY_ID = SQL_SELECT + " WHERE ID_CENTRO = ?";
 
-    private static final String SQL_FIND_ALL = SQL_SELECT + " ORDER BY DEPARTAMENTO, MUNICIPIO, NOMBRE_SEDE";
+    /** Todos los centros de salud (función con cursor). */
+    private static final String SQL_LISTAR_CENTROS = "{ ? = call fun_listar_centros_salud }";
+    /** Centros dentro de un rectángulo (función con cursor). */
+    private static final String SQL_CENTROS_EN_AREA = "{ ? = call fun_centros_en_area(?, ?, ?, ?) }";
+    /** Centros a menos de x km de un punto, del más cercano al más lejano (función con cursor). */
+    private static final String SQL_CENTROS_CERCANOS = "{ ? = call fun_centros_cercanos(?, ?, ?) }";
 
     private static final String SQL_FIND_BY_DEPARTMENT =
             SQL_SELECT + " WHERE UPPER(DEPARTAMENTO) = UPPER(?) ORDER BY MUNICIPIO, NOMBRE_SEDE";
@@ -43,9 +50,6 @@ public class HealthCenterDAO implements CrudDAO<HealthCenter, Integer> {
 
     private static final String SQL_FIND_BY_TYPE =
             SQL_SELECT + " WHERE TIPO = ? ORDER BY DEPARTAMENTO, NOMBRE_SEDE";
-
-    private static final String SQL_FIND_IN_AREA =
-            SQL_SELECT + " WHERE LATITUD BETWEEN ? AND ? AND LONGITUD BETWEEN ? AND ?";
 
     private static final String SQL_UPDATE =
             "UPDATE CENTRO_SALUD SET COD_HABILITACION = ?, NOMBRE_SEDE = ?, PRESTADOR = ?, TIPO = ?, "
@@ -106,10 +110,14 @@ public class HealthCenterDAO implements CrudDAO<HealthCenter, Integer> {
     @Override
     public List<HealthCenter> findAll() {
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
-             ResultSet rs = ps.executeQuery()) {
+             CallableStatement cs = conn.prepareCall(SQL_LISTAR_CENTROS)) {
 
-            return mapList(rs);
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_listar_centros_salud
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapList(rs);
+            }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar los centros de salud", e);
@@ -205,18 +213,50 @@ public class HealthCenterDAO implements CrudDAO<HealthCenter, Integer> {
      */
     public List<HealthCenter> findInArea(double latMin, double latMax, double lonMin, double lonMax) {
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SQL_FIND_IN_AREA)) {
+             CallableStatement cs = conn.prepareCall(SQL_CENTROS_EN_AREA)) {
 
-            ps.setDouble(1, latMin);
-            ps.setDouble(2, latMax);
-            ps.setDouble(3, lonMin);
-            ps.setDouble(4, lonMax);
-            try (ResultSet rs = ps.executeQuery()) {
+            cs.registerOutParameter(1, OracleTypes.CURSOR);
+            cs.setDouble(2, latMin); // x_lat_min
+            cs.setDouble(3, latMax); // x_lat_max
+            cs.setDouble(4, lonMin); // x_lon_min
+            cs.setDouble(5, lonMax); // x_lon_max
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
                 return mapList(rs);
             }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar los centros de salud de la zona", e);
+        }
+    }
+
+    /**
+     * Centros de salud a menos de {@code km} de un punto, del más cercano al más lejano
+     * ({@code fun_centros_cercanos}; la distancia la calcula fun_distancia_km).
+     *
+     * @param latitude  latitud del punto
+     * @param longitude longitud del punto
+     * @param km        radio de búsqueda
+     * @return centros cercanos, ordenados por distancia
+     * @throws DataAccessException si falla la consulta
+     */
+    public List<HealthCenter> findNearby(double latitude, double longitude, double km) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(SQL_CENTROS_CERCANOS)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR);
+            cs.setDouble(2, latitude);  // x_lat
+            cs.setDouble(3, longitude); // x_lon
+            cs.setDouble(4, km);        // x_km
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapList(rs);
+            }
+
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudo listar los centros de salud cercanos", e);
         }
     }
 

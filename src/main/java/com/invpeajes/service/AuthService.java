@@ -5,6 +5,7 @@ import com.invpeajes.model.Traveler;
 import com.invpeajes.persistence.AccessLogDAO;
 import com.invpeajes.persistence.CashierDAOImpl;
 import com.invpeajes.persistence.DataAccessException;
+import com.invpeajes.persistence.DatabaseFunctionsDAO;
 import com.invpeajes.persistence.ICashierDAO;
 import com.invpeajes.persistence.TravelerDAO;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +39,9 @@ import java.util.regex.Pattern;
  *
  * Cada intento queda en la bitácora de la base de datos ({@link AccessLogDAO}, procedimiento
  * {@code pkg_seguridad.Pr_registrar_acceso}). Si un empleado falla 3 veces en 15 minutos, la base
- * bloquea su cuenta hasta que un superior la reactive.
+ * bloquea su cuenta hasta que un superior la reactive. Los viajeros no tienen cuenta que se pueda
+ * bloquear: si la función {@code fun_fallos_recientes} de la base dice que fallaron 3 veces en
+ * los últimos 15 minutos, deben esperar.
  *
  * @author Salomejimenez
  * @version 1.0
@@ -66,6 +69,10 @@ public class AuthService {
     private final TravelerDAO travelerDAO;
     private final AccessLogDAO accessLog;
     private final Map<String, Attempts> attempts = new HashMap<>();
+    private final DatabaseFunctionsDAO functionsDAO = new DatabaseFunctionsDAO();
+
+    /** Minutos en que la base cuenta los intentos fallidos (pkg_seguridad.c_minutos_ventana). */
+    private static final int DATABASE_WINDOW_MINUTES = 15;
 
     /** Crea el servicio con los DAO de la base de datos. */
     public AuthService() {
@@ -154,6 +161,7 @@ public class AuthService {
                 throw new IllegalArgumentException("Escriba un correo válido");
             }
             checkLocked("V:" + mail);
+            checkTravelerFailures(mail);
             Traveler traveler = travelerDAO.findByEmail(mail).orElse(null);
             if (traveler == null || !traveler.getPasswordHash().equalsIgnoreCase(hash(mail, password))) {
                 logAttempt(mail, AccessLogDAO.TRAVELER, false);
@@ -254,6 +262,21 @@ public class AuthService {
             accessLog.register(identifier, userType, successful);
         } catch (DataAccessException e) {
             System.err.println("No se pudo guardar el intento de acceso de " + identifier + ": " + e.getMessage());
+        }
+    }
+
+    /** Revisa con fun_fallos_recientes si el viajero falló demasiadas veces en los últimos minutos. */
+    private void checkTravelerFailures(String mail) {
+        int failures;
+        try {
+            failures = functionsDAO.recentFailures(mail, DATABASE_WINDOW_MINUTES);
+        } catch (DataAccessException e) {
+            System.err.println("No se pudieron consultar los intentos de " + mail + ": " + e.getMessage());
+            return;
+        }
+        if (failures >= MAX_ATTEMPTS) {
+            throw new IllegalStateException("Demasiados intentos fallidos con este correo. Por seguridad, "
+                    + "espere " + DATABASE_WINDOW_MINUTES + " minutos e intente de nuevo");
         }
     }
 

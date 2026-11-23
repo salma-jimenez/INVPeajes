@@ -1,6 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.Traveler;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -32,6 +33,8 @@ public class TravelerDAO implements CrudDAO<Traveler, Integer> {
     private static final String SQL_UPDATE_PASSWORD =
             "UPDATE PEAJE.VIAJERO SET CONTRASENA_HASH = ? WHERE ID_VIAJERO = ?";
     private static final String SQL_DELETE = "DELETE FROM PEAJE.VIAJERO WHERE ID_VIAJERO = ?";
+    /** El viajero cambia su teléfono y su placa (NULL = no cambia). */
+    private static final String SQL_UPDATE_CONTACT = "{call pkg_asistencias.Pr_actualizar_viajero(?, ?, ?)}";
 
     @Override
     public void insert(Traveler traveler) {
@@ -116,6 +119,27 @@ public class TravelerDAO implements CrudDAO<Traveler, Integer> {
      * @return true si se actualizó.
      * @throws DataAccessException Si falla la actualización.
      */
+    /**
+     * Cambia el teléfono y la placa con {@code pkg_asistencias.Pr_actualizar_viajero}.
+     * Lo que se envía en null no cambia.
+     *
+     * @param travelerId ID del viajero
+     * @param phone      teléfono nuevo, o null
+     * @param plate      placa nueva, o null
+     * @throws DataAccessException si el viajero no existe o falla la base
+     */
+    public void updateContact(int travelerId, String phone, String plate) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(SQL_UPDATE_CONTACT)) {
+            cs.setInt(1, travelerId);
+            cs.setString(2, phone);
+            cs.setString(3, plate);
+            cs.execute();
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudieron actualizar los datos del viajero " + travelerId, e);
+        }
+    }
+
     public boolean updatePassword(int travelerId, String passwordHash) {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_UPDATE_PASSWORD)) {

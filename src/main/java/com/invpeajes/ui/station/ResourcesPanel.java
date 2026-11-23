@@ -253,7 +253,7 @@ public class ResourcesPanel extends JPanel {
                 button = Theme.secondaryButton("Sacar de servicio");
                 button.addActionListener(e -> confirmAndRun("¿Sacar de servicio " + r.getIdentification()
                         + "?\nNo se podrá asignar hasta que se reactive.",
-                        () -> service.resources().markOutOfService(r.getResourceId())));
+                        () -> service.resources().markOutOfService(session.getOperatorId(), r.getResourceId())));
                 break;
             case IN_SERVICE: {
                 accent = Theme.PRIMARY;
@@ -271,7 +271,7 @@ public class ResourcesPanel extends JPanel {
                 accent = new Color(0x9CA3AF);
                 text = "No se puede asignar";
                 button = Theme.primaryButton("Reactivar");
-                button.addActionListener(e -> run(() -> service.resources().reactivate(r.getResourceId())));
+                button.addActionListener(e -> run(() -> service.resources().reactivate(session.getOperatorId(), r.getResourceId())));
                 break;
         }
         JPanel card = new ResourceCard(accent, r.getAvailability() == ResourceAvailability.OUT_OF_SERVICE);

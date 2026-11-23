@@ -22,6 +22,7 @@ public class AccessLogDAO {
     public static final String TRAVELER = "VIAJERO";
 
     private static final String REGISTER_SQL = "{call pkg_seguridad.Pr_registrar_acceso(?, ?, ?)}";
+    private static final String REACTIVATE_SQL = "{call pkg_seguridad.Pr_reactivar_usuario(?, ?)}";
     private static final String BLOCKED_SQL =
             "SELECT ACTIVO FROM PEAJE.USUARIO_PEAJE WHERE CEDULA = ?";
 
@@ -42,6 +43,26 @@ public class AccessLogDAO {
             cs.execute();
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo registrar el inicio de sesión", e);
+        }
+    }
+
+    /**
+     * Un superior vuelve a activar una cuenta ({@code pkg_seguridad.Pr_reactivar_usuario}).
+     * La base revisa la jerarquía (el jefe a sus operadores, el administrador a los jefes de su
+     * entidad), deja la cuenta activa y reinicia el conteo de intentos fallidos.
+     *
+     * @param actorId  cédula de quien reactiva
+     * @param idNumber cédula de la cuenta a reactivar
+     * @throws DataAccessException si no tiene permiso o la cuenta ya está activa
+     */
+    public void reactivate(String actorId, String idNumber) {
+        try (Connection con = DatabaseConnection.getConnection();
+             CallableStatement cs = con.prepareCall(REACTIVATE_SQL)) {
+            cs.setString(1, actorId);
+            cs.setString(2, idNumber);
+            cs.execute();
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudo reactivar la cuenta " + idNumber, e);
         }
     }
 

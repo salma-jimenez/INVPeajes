@@ -6,6 +6,7 @@ import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceType;
 import com.invpeajes.model.Concessionaire;
 import com.invpeajes.model.Department;
+import com.invpeajes.model.PricedToll;
 import com.invpeajes.model.Route;
 import com.invpeajes.model.Toll;
 import com.invpeajes.model.TollRate;
@@ -16,6 +17,7 @@ import com.invpeajes.persistence.ConcessionaireDAO;
 import com.invpeajes.persistence.DataAccessException;
 import com.invpeajes.persistence.DepartmentDAO;
 import com.invpeajes.persistence.RouteDAO;
+import com.invpeajes.persistence.DatabaseFunctionsDAO;
 import com.invpeajes.persistence.TravelerDAO;
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -46,8 +48,6 @@ public class TravelerService {
     public static final double DEFAULT_CORRIDOR_KM = 10;
 
     private static final double EARTH_RADIUS_KM = 6371.0;
-    /** Peajes mínimos que una ruta debe tener en el trayecto para ofrecerla como opción. */
-    private static final int MIN_TOLLS_PER_ROUTE = 2;
     private static final Pattern PHONE = Pattern.compile("^\\d{7,15}$");
 
     private final TollService tollService;
@@ -60,6 +60,7 @@ public class TravelerService {
     private final ConcessionaireDAO concessionaireDAO;
     private final RouteDAO routeDAO;
     private final TravelerDAO travelerDAO;
+    private final DatabaseFunctionsDAO functionsDAO = new DatabaseFunctionsDAO();
 
     /** Crea el servicio con sus dependencias por defecto (base de datos Oracle). */
     public TravelerService() {
@@ -149,10 +150,9 @@ public class TravelerService {
     public Map<Integer, BigDecimal> pricesFor(int categoryId) {
         try {
             Map<Integer, BigDecimal> prices = new HashMap<>();
-            for (TollRate rate : rateService.findAll()) {
-                if (rate.getCategoryId() == categoryId) {
-                    prices.put(rate.getTollId(), rate.getPrice());
-                }
+            // Función fun_tarifas_categoria: solo los peajes con precio para esa categoría.
+            for (TollRate rate : rateService.findByCategory(categoryId)) {
+                prices.put(rate.getTollId(), rate.getPrice());
             }
             return prices;
         } catch (SQLException e) {
@@ -161,7 +161,8 @@ public class TravelerService {
     }
 
     /**
-     * Categoría del vehículo de una placa, para escoger de una vez su tarifa.
+     * Categoría del vehículo de una placa, para escoger de una vez su tarifa
+     * (función {@code fun_categoria_placa} de la base).
      *
      * @param plate placa, o null
      * @return ID de la categoría, o null si la placa no está registrada
@@ -170,7 +171,50 @@ public class TravelerService {
         if (plate == null || plate.isBlank()) {
             return null;
         }
-        return vehicleService.find(plate).map(Vehicle::getCategoryId).orElse(null);
+        return functionsDAO.plateCategory(VehicleService.normalizePlate(plate));
+    }
+
+    // ------------------------------------------------------------------ Filtros del mapa
+
+    /**
+     * Peajes que cumplen los filtros del Mapa de peajes (función {@code fun_filtrar_peajes}).
+     * Un filtro en null o vacío no se aplica.
+     *
+     * @param departmentId     código del departamento, o null
+     * @param routeId          código de la ruta, o null
+     * @param concessionaireId ID del concesionario, o null
+     * @param text             parte del nombre, o null
+     * @return peajes que cumplen todos los filtros
+     * @throws DataAccessException si falla la base de datos
+     */
+    public List<Toll> filterTolls(String departmentId, String routeId, Integer concessionaireId, String text) {
+        return tollService.filterTolls(departmentId, routeId, concessionaireId, text);
+    }
+
+    /**
+     * @return departamentos que tienen peajes, para el filtro del mapa
+     *         (función {@code fun_departamentos_con_peajes})
+     * @throws DataAccessException si falla la base de datos
+     */
+    public List<Department> departmentsWithTolls() {
+        return departmentDAO.findWithTolls();
+    }
+
+    /**
+     * @return rutas que tienen peajes, para el filtro del mapa (función {@code fun_rutas_con_peajes})
+     * @throws DataAccessException si falla la base de datos
+     */
+    public List<Route> routesWithTolls() {
+        return routeDAO.findWithTolls();
+    }
+
+    /**
+     * @return concesionarios que tienen peajes, para el filtro del mapa
+     *         (función {@code fun_concesionarios_con_peajes})
+     * @throws DataAccessException si falla la base de datos
+     */
+    public List<Concessionaire> concessionairesWithTolls() {
+        return concessionaireDAO.findWithTolls();
     }
 
     // ------------------------------------------------------------------ Planificar viaje
@@ -178,131 +222,82 @@ public class TravelerService {
     /**
      * Calcula los peajes de un viaje y lo que cuestan, de forma aproximada.
      *
-     * Se usa cuando no se pudo obtener la ruta por carretera (ver {@link #planTripOnRoad}):
-     * toma los peajes que están a menos de {@code corridorKm} de la línea recta entre origen
-     * y destino, en el orden en que se encuentran. Si se indica una ruta, solo cuenta los
-     * peajes de esa ruta.
+     * Se usa cuando no se pudo obtener la ruta por carretera (ver {@link #planTripOnRoad}).
+     * Todo lo calcula la base con la función {@code fun_peajes_corredor}: escoge los peajes que
+     * están a menos de {@code corridorKm} de la línea recta entre origen y destino, los ordena,
+     * les pone la tarifa de la categoría ({@code fun_tarifa}) y los km
+     * ({@code fun_distancia_km}). Si se indica una ruta, solo cuenta los peajes de esa ruta.
      *
-     * @param tolls      peajes entre los que se busca
-     * @param prices     precio por peaje para la categoría del vehículo
      * @param originLat  latitud del origen
      * @param originLon  longitud del origen
      * @param destLat    latitud del destino
      * @param destLon    longitud del destino
      * @param corridorKm ancho del corredor en km
      * @param routeId    ruta a la que se limita, o null para todas
+     * @param categoryId categoría del vehículo
      * @return plan del viaje con peajes, total y distancia aproximada
+     * @throws DataAccessException si falla la base de datos
      */
-    public static TripPlan planTrip(List<Toll> tolls, Map<Integer, BigDecimal> prices,
-                                    double originLat, double originLon, double destLat, double destLon,
-                                    double corridorKm, String routeId) {
-        // Proyección plana local: suficiente para distancias de cientos de km
-        double midLat = Math.toRadians((originLat + destLat) / 2);
-        double kmPerDegLat = 111.32;
-        double kmPerDegLon = 111.32 * Math.cos(midLat);
-        double bx = (destLon - originLon) * kmPerDegLon;
-        double by = (destLat - originLat) * kmPerDegLat;
-        double length2 = bx * bx + by * by;
-
-        List<double[]> found = new ArrayList<>();
-        List<Toll> onRoute = new ArrayList<>();
-        for (Toll toll : tolls) {
-            if (routeId != null && !routeId.equals(toll.getRouteId())) {
-                continue;
-            }
-            double px = (toll.getLongitude() - originLon) * kmPerDegLon;
-            double py = (toll.getLatitude() - originLat) * kmPerDegLat;
-            double t = length2 == 0 ? 0 : (px * bx + py * by) / length2;
-            if (t < 0 || t > 1) {
-                continue;
-            }
-            double dx = px - t * bx;
-            double dy = py - t * by;
-            if (Math.sqrt(dx * dx + dy * dy) <= corridorKm) {
-                found.add(new double[]{t, onRoute.size()});
-                onRoute.add(toll);
-            }
-        }
-        found.sort(Comparator.comparingDouble(a -> a[0]));
-
+    public TripPlan planTrip(double originLat, double originLon, double destLat, double destLon,
+                             double corridorKm, String routeId, int categoryId) {
+        List<PricedToll> tolls = tollService.tollsInCorridor(originLat, originLon, destLat, destLon,
+                corridorKm, routeId, categoryId);
         List<TripStop> stops = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO;
         int withoutRate = 0;
-        double distance = 0;
-        double lastLat = originLat;
-        double lastLon = originLon;
-        for (double[] f : found) {
-            Toll toll = onRoute.get((int) f[1]);
-            BigDecimal price = prices.get(toll.getTollId());
-            if (price == null) {
+        for (PricedToll t : tolls) {
+            if (t.getPrice() == null) {
                 withoutRate++;
             } else {
-                total = total.add(price);
+                total = total.add(t.getPrice());
             }
-            distance += distanceKm(lastLat, lastLon, toll.getLatitude(), toll.getLongitude());
-            lastLat = toll.getLatitude();
-            lastLon = toll.getLongitude();
-            stops.add(new TripStop(toll, price, distance));
+            stops.add(new TripStop(t.getToll(), t.getPrice(), t.getKmFromOrigin()));
         }
-        distance += distanceKm(lastLat, lastLon, destLat, destLon);
+        double distance;
+        if (tolls.isEmpty()) {
+            distance = functionsDAO.distanceKm(originLat, originLon, destLat, destLon); // fun_distancia_km
+        } else {
+            PricedToll last = tolls.get(tolls.size() - 1);
+            distance = last.getKmFromOrigin() + last.getKmToDestination();
+        }
         return new TripPlan(stops, total, distance, withoutRate);
     }
 
     /**
-     * Rutas que sirven para ir de un origen a un destino: las que tienen peajes
-     * dentro del corredor entre los dos puntos (el mismo criterio de {@link #planTrip}),
-     * descartando las que solo cruzan el trayecto con un peaje.
-     * Así el viajero solo escoge entre las rutas que de verdad pasan por su trayecto.
+     * Rutas que sirven para ir de un origen a un destino (función {@code fun_rutas_entre}): las
+     * que tienen peajes dentro del corredor entre los dos puntos, descartando las que solo
+     * cruzan el trayecto con un peaje. Son las opciones del combo "Ruta" de Planificar viaje.
      *
-     * @param tolls      peajes del catálogo
      * @param originLat  latitud del origen
      * @param originLon  longitud del origen
      * @param destLat    latitud del destino
      * @param destLon    longitud del destino
      * @param corridorKm ancho del corredor en km
-     * @return IDs de las rutas, primero las que tienen más peajes en el trayecto
+     * @return rutas del trayecto, primero las que tienen más peajes
+     * @throws DataAccessException si falla la base de datos
      */
-    public static List<String> routesBetween(List<Toll> tolls, double originLat, double originLon,
-                                             double destLat, double destLon, double corridorKm) {
-        TripPlan inCorridor = planTrip(tolls, Collections.emptyMap(), originLat, originLon,
-                destLat, destLon, corridorKm, null);
-        Map<String, Integer> tollsPerRoute = new HashMap<>();
-        for (TripStop stop : inCorridor.getStops()) {
-            String routeId = stop.getToll().getRouteId();
-            if (routeId != null) {
-                tollsPerRoute.merge(routeId, 1, Integer::sum);
-            }
-        }
-        // Una ruta con un solo peaje en el corredor casi siempre es una vía que solo lo cruza;
-        // se descartan, salvo que no quede ninguna ruta con dos o más.
-        boolean anyWithTwo = tollsPerRoute.values().stream().anyMatch(n -> n >= MIN_TOLLS_PER_ROUTE);
-        List<String> routes = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : tollsPerRoute.entrySet()) {
-            if (!anyWithTwo || e.getValue() >= MIN_TOLLS_PER_ROUTE) {
-                routes.add(e.getKey());
-            }
-        }
-        routes.sort(Comparator.comparing((String id) -> -tollsPerRoute.get(id)).thenComparing(id -> id));
-        return routes;
+    public List<Route> routesBetween(double originLat, double originLon, double destLat, double destLon,
+                                     double corridorKm) {
+        return routeDAO.findBetween(originLat, originLon, destLat, destLon, corridorKm);
     }
 
     /**
      * Calcula los peajes de un viaje sobre la ruta real por carretera.
      *
-     * Un peaje es "del camino" si está a menos de {@code maxMeters} de la vía. Los peajes se
-     * ordenan por el punto de la vía donde quedan, y los km de cada uno son los recorridos
-     * por carretera desde el origen hasta ese punto. Si se indica una ruta, solo cuenta los
-     * peajes de esa ruta.
+     * La base entrega los peajes del rectángulo que encierra la ruta, con su tarifa para la
+     * categoría (función {@code fun_peajes_en_area}). Como la línea de la carretera (miles de
+     * puntos que da OpenStreetMap) no está en la base, aquí se escoge cuáles de esos peajes
+     * quedan sobre la vía: los que están a menos de {@code maxMeters}. Se ordenan por el punto
+     * de la vía donde quedan, y sus km son los recorridos por carretera desde el origen.
      *
-     * @param tolls     peajes entre los que se busca
-     * @param prices    precio por peaje para la categoría del vehículo
-     * @param road      ruta por carretera (de {@link RouteService#findRoute})
-     * @param maxMeters distancia máxima del peaje a la vía, en metros
-     * @param routeId   ruta a la que se limita, o null para todas
+     * @param road       ruta por carretera (de {@link RouteService#findRoute})
+     * @param maxMeters  distancia máxima del peaje a la vía, en metros
+     * @param routeId    ruta a la que se limita, o null para todas
+     * @param categoryId categoría del vehículo
      * @return plan del viaje con peajes, total y distancia por carretera
+     * @throws DataAccessException si falla la base de datos
      */
-    public static TripPlan planTripOnRoad(List<Toll> tolls, Map<Integer, BigDecimal> prices,
-                                          RouteService.RoadRoute road, double maxMeters, String routeId) {
+    public TripPlan planTripOnRoad(RouteService.RoadRoute road, double maxMeters, String routeId, int categoryId) {
         List<double[]> points = road.getPoints();
         int n = points.size();
         if (n < 2) {
@@ -319,7 +314,7 @@ public class TravelerService {
         // Se ajusta a la distancia que da el servicio de rutas para que el último km coincida
         double scale = kmAt[n - 1] > 0 ? road.getDistanceKm() / kmAt[n - 1] : 1;
 
-        // Caja que rodea la ruta, para descartar rápido los peajes lejanos
+        // Rectángulo que rodea la ruta: la base devuelve solo los peajes de ahí
         double marginDeg = maxMeters / 111_000.0 + 0.01;
         double minLat = Double.MAX_VALUE;
         double maxLat = -Double.MAX_VALUE;
@@ -331,18 +326,14 @@ public class TravelerService {
             minLon = Math.min(minLon, p[1]);
             maxLon = Math.max(maxLon, p[1]);
         }
+        List<PricedToll> candidates = tollService.tollsInArea(minLat - marginDeg, maxLat + marginDeg,
+                minLon - marginDeg, maxLon + marginDeg, routeId, categoryId);
 
         List<TripStop> found = new ArrayList<>();
-        for (Toll toll : tolls) {
-            if (routeId != null && !routeId.equals(toll.getRouteId())) {
-                continue;
-            }
+        for (PricedToll candidate : candidates) {
+            Toll toll = candidate.getToll();
             double lat = toll.getLatitude();
             double lon = toll.getLongitude();
-            if (lat < minLat - marginDeg || lat > maxLat + marginDeg
-                    || lon < minLon - marginDeg || lon > maxLon + marginDeg) {
-                continue;
-            }
             double bestMeters = Double.MAX_VALUE;
             double bestKm = 0;
             for (int i = 0; i < n - 1; i++) {
@@ -355,7 +346,7 @@ public class TravelerService {
                 }
             }
             if (bestMeters <= maxMeters) {
-                found.add(new TripStop(toll, prices.get(toll.getTollId()), bestKm * scale));
+                found.add(new TripStop(toll, candidate.getPrice(), bestKm * scale));
             }
         }
         found.sort(Comparator.comparingDouble(TripStop::getKmFromOrigin));
@@ -513,7 +504,9 @@ public class TravelerService {
     // ------------------------------------------------------------------ Cuenta
 
     /**
-     * Cambia el teléfono y la placa del viajero (cada viajero tiene una sola placa).
+     * Cambia el teléfono y la placa del viajero (cada viajero tiene una sola placa) con
+     * {@code pkg_asistencias.Pr_actualizar_viajero}. Ese procedimiento no borra la placa (NULL
+     * significa "no cambia"), así que si el viajero la quita se borra con una actualización normal.
      *
      * @param traveler viajero con cuenta
      * @param phone    teléfono nuevo
@@ -535,7 +528,10 @@ public class TravelerService {
         traveler.setPhone(cleanPhone);
         traveler.setPlate(cleanPlate.isEmpty() ? null : cleanPlate);
         try {
-            travelerDAO.update(traveler);
+            travelerDAO.updateContact(traveler.getTravelerId(), traveler.getPhone(), traveler.getPlate());
+            if (traveler.getPlate() == null && oldPlate != null) {
+                travelerDAO.update(traveler);
+            }
         } catch (RuntimeException e) {
             traveler.setPhone(oldPhone);
             traveler.setPlate(oldPlate);

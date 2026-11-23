@@ -1,7 +1,10 @@
 package com.invpeajes.service;
 
 import com.invpeajes.model.TollUser;
+import com.invpeajes.persistence.AccessLogDAO;
+import com.invpeajes.persistence.AdministrationDAO;
 import com.invpeajes.persistence.DataAccessException;
+import com.invpeajes.persistence.StationDAO;
 import com.invpeajes.persistence.TollUserDao;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -19,8 +22,12 @@ import java.util.NoSuchElementException;
  *   <li>Nadie se borra: se desactiva, para conservar sus tiquetes y turnos.</li>
  * </ul>
  *
- * Quién puede editar a quién lo deciden {@link AdminService} (jefes de estación) y el panel del
- * jefe (operadores de su peaje).
+ * Quién puede editar a quién lo decide la base de datos: los jefes de estación se crean y se
+ * modifican con {@code pkg_administracion} (solo el administrador de la entidad del peaje), los
+ * operadores con {@code pkg_estacion} (solo el jefe de su peaje) y las cuentas se reactivan con
+ * {@code pkg_seguridad.Pr_reactivar_usuario}. Por eso estos métodos reciben la cédula de quien
+ * hace el cambio. Los procedimientos no reciben el segundo nombre, el segundo apellido ni la
+ * fecha de ingreso: esos datos se guardan justo después con una actualización normal.
  *
  * @author Salomejimenez
  * @version 1.0
@@ -31,17 +38,27 @@ public class StaffService {
     private static final int MAX_EMAIL = 60;
 
     private final TollUserDao userDAO;
+    private final AdministrationDAO administrationDAO;
+    private final StationDAO stationDAO;
+    private final AccessLogDAO accessLogDAO;
 
     /** Crea el servicio con la base de datos. */
     public StaffService() {
-        this(new TollUserDao());
+        this(new TollUserDao(), new AdministrationDAO(), new StationDAO(), new AccessLogDAO());
     }
 
     /**
      * @param userDAO Acceso a USUARIO_PEAJE.
+     * @param administrationDAO Procedimientos del administrador (pkg_administracion).
+     * @param stationDAO Procedimientos del jefe de estación (pkg_estacion).
+     * @param accessLogDAO Procedimientos de seguridad (pkg_seguridad).
      */
-    public StaffService(TollUserDao userDAO) {
+    public StaffService(TollUserDao userDAO, AdministrationDAO administrationDAO, StationDAO stationDAO,
+                        AccessLogDAO accessLogDAO) {
         this.userDAO = userDAO;
+        this.administrationDAO = administrationDAO;
+        this.stationDAO = stationDAO;
+        this.accessLogDAO = accessLogDAO;
     }
 
     /**
@@ -79,18 +96,90 @@ public class StaffService {
     }
 
     /**
-     * Registra un empleado nuevo con su cédula como contraseña inicial.
-     * @param user Datos del empleado (cédula, nombres, apellidos, teléfono, correo, fecha de ingreso).
-     * @param role Cargo (AuthService.ROLE_OPERATOR o ROLE_MANAGER).
+     * Registra un jefe de estación con {@code pkg_administracion.Pr_agregar_jefe}. Su contraseña
+     * inicial es su cédula.
+     * @param adminId Cédula del administrador que lo registra.
+     * @param user Datos del jefe (cédula, nombres, apellidos, teléfono, correo, fecha de ingreso).
      * @param tollId Peaje donde trabaja.
-     * @return El empleado registrado.
-     * @throws ValidationException Si algún dato no es válido o la cédula o el correo ya existen.
+     * @return El jefe registrado.
+     * @throws ValidationException Si algún dato no es válido.
+     * @throws DataAccessException Si la base lo rechaza (cédula o correo repetidos, peaje de otra entidad).
      */
-    public TollUser register(TollUser user, String role, int tollId) {
+    public TollUser registerManager(String adminId, TollUser user, int tollId) {
+        prepareNew(user, AuthService.ROLE_MANAGER, tollId);
+        administrationDAO.addManager(adminId, user.getIdNumber(), user.getFirstName(), user.getFirstSurname(),
+                user.getEmail(), user.getPhone(), tollId);
+        saveExtraData(user);
+        return user;
+    }
+
+    /**
+     * Registra un operador de caseta en el peaje del jefe con
+     * {@code pkg_estacion.Pr_agregar_operador}. Su contraseña inicial es su cédula.
+     * @param managerId Cédula del jefe de estación que lo registra.
+     * @param user Datos del operador.
+     * @param tollId Peaje del jefe (la base usa el peaje del jefe; este dato es para el objeto).
+     * @return El operador registrado.
+     * @throws ValidationException Si algún dato no es válido.
+     * @throws DataAccessException Si la base lo rechaza (cédula o correo repetidos, sin permiso).
+     */
+    public TollUser registerOperator(String managerId, TollUser user, int tollId) {
+        prepareNew(user, AuthService.ROLE_OPERATOR, tollId);
+        stationDAO.addOperator(managerId, user.getIdNumber(), user.getFirstName(), user.getFirstSurname(),
+                user.getEmail(), user.getPhone());
+        saveExtraData(user);
+        return user;
+    }
+
+    /**
+     * Guarda los datos de un jefe de estación: teléfono, correo y peaje con
+     * {@code pkg_administracion.Pr_modificar_jefe}, y luego nombres y fecha de ingreso.
+     * @param adminId Cédula del administrador.
+     * @param user Jefe con los datos nuevos.
+     * @throws ValidationException Si algún dato no es válido.
+     * @throws DataAccessException Si la base lo rechaza.
+     */
+    public void updateManager(String adminId, TollUser user) {
         clean(user);
-        if (!AuthService.ROLE_OPERATOR.equals(role) && !AuthService.ROLE_MANAGER.equals(role)) {
-            throw new ValidationException("Cargo no válido: " + role);
+        validate(user, false);
+        administrationDAO.modifyManager(adminId, user.getIdNumber(), user.getPhone(), user.getEmail(),
+                user.getTollId());
+        saveExtraData(user);
+    }
+
+    /**
+     * Guarda los datos de un operador: teléfono y correo con
+     * {@code pkg_estacion.Pr_modificar_operador}, y luego nombres y fecha de ingreso.
+     * @param managerId Cédula del jefe de estación.
+     * @param user Operador con los datos nuevos.
+     * @throws ValidationException Si algún dato no es válido.
+     * @throws DataAccessException Si la base lo rechaza.
+     */
+    public void updateOperator(String managerId, TollUser user) {
+        clean(user);
+        validate(user, false);
+        stationDAO.modifyOperator(managerId, user.getIdNumber(), user.getPhone(), user.getEmail());
+        saveExtraData(user);
+    }
+
+    /**
+     * Activa o desactiva una cuenta. Activar se hace con {@code pkg_seguridad.Pr_reactivar_usuario},
+     * que revisa que quien lo hace sea su superior y reinicia los intentos fallidos.
+     * @param actorId Cédula de quien hace el cambio (jefe o administrador).
+     * @param idNumber Cédula de la cuenta.
+     * @param active true para activar.
+     * @throws DataAccessException Si la base no deja reactivarla.
+     */
+    public void setActive(String actorId, String idNumber, boolean active) {
+        if (active) {
+            accessLogDAO.reactivate(actorId, idNumber);
+        } else if (!userDAO.setActive(idNumber, false)) {
+            throw new NoSuchElementException("No existe un usuario con la cédula " + idNumber);
         }
+    }
+
+    private void prepareNew(TollUser user, String role, int tollId) {
+        clean(user);
         validate(user, true);
         if (userDAO.findById(user.getIdNumber()).isPresent()) {
             throw new ValidationException("Ya existe un usuario con la cédula " + user.getIdNumber());
@@ -102,13 +191,20 @@ public class StaffService {
         if (user.getHireDate() == null) {
             user.setHireDate(LocalDate.now());
         }
+        user.setDefaultPassword(true);
+    }
+
+    /**
+     * Guarda lo que los procedimientos no reciben (segundo nombre, segundo apellido y fecha de
+     * ingreso). El peaje se toma de la base, por si el procedimiento lo puso.
+     */
+    private void saveExtraData(TollUser user) {
+        userDAO.findById(user.getIdNumber()).ifPresent(saved -> user.setTollId(saved.getTollId()));
         try {
-            userDAO.insert(user, AuthService.hash(user.getIdNumber(), user.getIdNumber().toCharArray()));
+            userDAO.update(user);
         } catch (DataAccessException e) {
             throw friendly(e);
         }
-        user.setDefaultPassword(true);
-        return user;
     }
 
     /**
@@ -126,17 +222,6 @@ public class StaffService {
             }
         } catch (DataAccessException e) {
             throw friendly(e);
-        }
-    }
-
-    /**
-     * Activa o desactiva a un usuario.
-     * @param idNumber Cédula.
-     * @param active true para activar.
-     */
-    public void setActive(String idNumber, boolean active) {
-        if (!userDAO.setActive(idNumber, active)) {
-            throw new NoSuchElementException("No existe un usuario con la cédula " + idNumber);
         }
     }
 

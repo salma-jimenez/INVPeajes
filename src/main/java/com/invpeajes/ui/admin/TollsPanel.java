@@ -402,7 +402,7 @@ public class TollsPanel extends JPanel implements AdminPage {
         FlatButton save = Theme.primaryButton("Guardar cambios");
         save.addActionListener(e -> {
             String level = context.getLevel();
-            Async.run(() -> service.updateToll(level, form.read(toll.getTollId()), form.acceptsColpass()),
+            Async.run(() -> service.updateToll(context.getAdmin(), form.read(toll.getTollId()), form.acceptsColpass()),
                     saved -> {
                         Forms.info(this, "Peajes", "Cambios guardados en " + saved.getName() + ".");
                         onChanged.accept(saved.getTollId());
@@ -427,7 +427,7 @@ public class TollsPanel extends JPanel implements AdminPage {
                 Forms.confirm(this, "¿Eliminar el peaje " + toll.getName() + "?", "No tiene cobros ni empleados. "
                         + "Se borran también sus " + usage.getBooths() + " casetas y sus tarifas. <b>No se puede "
                         + "deshacer.</b>", "Eliminar peaje", true,
-                        () -> service.deleteToll(level, toll.getTollId()), () -> onChanged.accept(null));
+                        () -> service.deleteToll(context.getAdmin(), toll.getTollId()), () -> onChanged.accept(null));
             } else if ("NO_OPERATIVO".equals(toll.getOperationalStatus())) {
                 Forms.info(this, "Eliminar peaje", toll.getName() + " tiene " + history(usage)
                         + " y no se puede borrar. Ya está No operativo, así que no aparece como activo.");
@@ -446,7 +446,7 @@ public class TollsPanel extends JPanel implements AdminPage {
                         + "no pueden abrir turno en él, pero se conserva todo su historial.</div>"));
                 Forms.dialog(this, "¿Eliminar el peaje " + toll.getName() + "?", null, body, "Pasar a No operativo",
                         false, () -> {
-                            service.changeTollStatus(level, toll.getTollId(), "NO_OPERATIVO");
+                            service.changeTollStatus(context.getAdmin(), toll.getTollId(), "NO_OPERATIVO");
                             return Boolean.TRUE;
                         }, ok -> onChanged.accept(toll.getTollId()));
             }
@@ -586,7 +586,7 @@ public class TollsPanel extends JPanel implements AdminPage {
                 Forms.info(this, "Tarifas", "No cambiaste ninguna tarifa.");
                 return;
             }
-            Async.run(() -> service.saveRates(level, toll.getTollId(), changes, date), operating -> {
+            Async.run(() -> service.saveRates(context.getAdmin(), toll.getTollId(), changes, date), operating -> {
                 Forms.info(this, "Tarifas", changes.size() + (changes.size() == 1 ? " tarifa guardada." : " tarifas guardadas.")
                         + (operating ? "\n" + toll.getName() + " ya tiene todas sus tarifas y pasó a Operativo." : ""));
                 tab = RATES;
@@ -745,14 +745,14 @@ public class TollsPanel extends JPanel implements AdminPage {
         String level = context.getLevel();
         delete.addActionListener(e -> Forms.confirm(this, "¿Eliminar la caseta " + booth.getBoothNumber() + "?",
                 "Solo se puede eliminar si no tiene cobros. Si ya cobró, pídele al jefe de estación que la desactive.",
-                "Eliminar caseta", true, () -> service.deleteBooth(level, booth), () -> refreshBooths(panel, toll, null)));
+                "Eliminar caseta", true, () -> service.deleteBooth(context.getAdmin(), booth), () -> refreshBooths(panel, toll, null)));
         FlatButton save = Theme.primaryButton("Guardar");
         save.addActionListener(e -> {
             TollBooth changed = new TollBooth(booth.getBoothId(), booth.getBoothNumber(),
                     (String) payment.getSelectedItem(), (String) direction.getSelectedItem(), booth.getStatus(),
                     booth.getTollId());
             Async.run(() -> {
-                service.updateBooth(level, changed);
+                service.updateBooth(context.getAdmin(), changed);
                 return Boolean.TRUE;
             }, ok -> refreshBooths(panel, toll, booth.getBoothId()), error -> Forms.info(this, "Casetas",
                     error.getMessage()));
@@ -796,7 +796,7 @@ public class TollsPanel extends JPanel implements AdminPage {
         body.add(note);
         String level = context.getLevel();
         Forms.dialog(this, "Agregar caseta · " + toll.getName(), "Será la caseta número " + number + " del peaje.",
-                body, "Agregar caseta", false, () -> service.addBooth(level, toll.getTollId(),
+                body, "Agregar caseta", false, () -> service.addBooth(context.getAdmin(), toll.getTollId(),
                         (String) direction.getSelectedItem(), (String) payment.getSelectedItem()),
                 booth -> {
                     tab = BOOTHS;
@@ -863,7 +863,7 @@ public class TollsPanel extends JPanel implements AdminPage {
         String level = context.getLevel();
         Forms.dialog(this, "Registrar peaje", "Queda a cargo de " + Labels.entity(level) + ". Después de guardarlo "
                 + "podrás cargar sus tarifas y casetas.", body, "Registrar peaje", false,
-                () -> service.registerToll(level, form.read(0), form.acceptsColpass()), toll -> {
+                () -> service.registerToll(context.getAdmin(), form.read(0), form.acceptsColpass()), toll -> {
                     Forms.info(this, "Registrar peaje", toll.getName() + " quedó registrado como \"Sin tarifa\".\n"
                             + "Ahora carga sus tarifas en la pestaña Tarifas.");
                     tab = RATES;

@@ -294,7 +294,7 @@ public class StaffPanel extends JPanel implements AdminPage {
             reset.addActionListener(e -> Forms.confirm(this, "¿Restablecer la contraseña de " + user.getFullName()
                     + "?", "Su nueva contraseña será su cédula: <b>" + user.getIdNumber() + "</b>. Díselo para que "
                     + "pueda entrar y cambiarla.", "Restablecer", false,
-                    () -> service.resetManagerPassword(context.getLevel(), user.getIdNumber()), this::refresh));
+                    () -> service.resetManagerPassword(context.getAdmin(), user.getIdNumber()), this::refresh));
             body.add(reset);
         } else {
             JLabel note = new JLabel("<html><div style='width:230px'>Solo puedes ver a los operadores: sus datos, su "
@@ -352,7 +352,7 @@ public class StaffPanel extends JPanel implements AdminPage {
         Async.run(() -> {
             TollUser changed = form.read(user);
             changed.setTollId((Integer) toll.getSelectedItem());
-            service.updateManager(level, changed);
+            service.updateManager(context.getAdmin(), changed);
             return Boolean.TRUE;
         }, ok -> {
             Forms.info(this, "Empleados", "Cambios guardados.");
@@ -368,7 +368,7 @@ public class StaffPanel extends JPanel implements AdminPage {
                         : "Ya no podrá iniciar sesión. Su historial se conserva. " + tollName(user.getTollId())
                         + " quedará sin jefe hasta que registres o actives otro.",
                 activate ? "Activar" : "Desactivar", !activate,
-                () -> service.setManagerActive(level, user.getIdNumber(), activate), this::refresh);
+                () -> service.setManagerActive(context.getAdmin(), user.getIdNumber(), activate), this::refresh);
     }
 
     private void registerDialog(Integer preselected) {
@@ -402,7 +402,7 @@ public class StaffPanel extends JPanel implements AdminPage {
         String level = context.getLevel();
         Forms.dialog(this, "Registrar jefe de estación", "Su contraseña inicial será su cédula; la puede cambiar "
                 + "después.", body, "Registrar jefe", false,
-                () -> service.registerManager(level, form.read(null), (Integer) toll.getSelectedItem()), user -> {
+                () -> service.registerManager(context.getAdmin(), form.read(null), (Integer) toll.getSelectedItem()), user -> {
                     refresh();
                     Forms.info(this, "Empleados", user.getFullName() + " quedó registrado como jefe de estación de "
                             + tollName(user.getTollId()) + ".\nEntra con su cédula " + user.getIdNumber()

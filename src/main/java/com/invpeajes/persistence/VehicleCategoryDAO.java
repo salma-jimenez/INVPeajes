@@ -2,6 +2,7 @@ package com.invpeajes.persistence;
 
 import com.invpeajes.model.VehicleCategory;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -9,6 +10,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import oracle.jdbc.OracleTypes;
 
 /**
  * Acceso a datos de la tabla {@code PEAJE.CATEGORIA_VEHICULAR}.
@@ -22,8 +24,8 @@ public class VehicleCategoryDAO implements CrudDAO<VehicleCategory, Integer> {
             + "VALUES (?, ?, ?, ?)";
     private static final String FIND_BY_ID_SQL
             = "SELECT * FROM PEAJE.CATEGORIA_VEHICULAR WHERE ID_CATEGORIA = ?";
-    private static final String FIND_ALL_SQL
-            = "SELECT * FROM PEAJE.CATEGORIA_VEHICULAR ORDER BY ID_CATEGORIA";
+    /** Las categorías vehiculares (I a VII), función con cursor. */
+    private static final String SQL_LISTAR_CATEGORIAS = "{ ? = call fun_listar_categorias }";
     private static final String UPDATE_SQL
             = "UPDATE PEAJE.CATEGORIA_VEHICULAR SET CATEGORIA = ?, DESCRIPCION = ?, NUMERO_EJES = ? "
             + "WHERE ID_CATEGORIA = ?";
@@ -58,9 +60,16 @@ public class VehicleCategoryDAO implements CrudDAO<VehicleCategory, Integer> {
     @Override
     public List<VehicleCategory> findAll() {
         List<VehicleCategory> categories = new ArrayList<>();
-        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(FIND_ALL_SQL); ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                categories.add(mapRow(rs));
+        try (Connection con = DatabaseConnection.getConnection();
+             CallableStatement cs = con.prepareCall(SQL_LISTAR_CATEGORIAS)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_listar_categorias
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                while (rs.next()) {
+                    categories.add(mapRow(rs));
+                }
             }
             return categories;
         } catch (SQLException e) {

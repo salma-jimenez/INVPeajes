@@ -1,6 +1,7 @@
 package com.invpeajes.service;
 
 import com.invpeajes.model.TollBooth;
+import com.invpeajes.model.PricedToll;
 import com.invpeajes.model.Toll;
 import com.invpeajes.persistence.TollBoothDAO;
 import com.invpeajes.persistence.TollDAO;
@@ -140,6 +141,65 @@ public class TollService {
     }
 
     /**
+     * Peajes que cumplen los filtros del Mapa de peajes (función {@code fun_filtrar_peajes}).
+     * Un filtro en null o vacío no se aplica.
+     * @param departmentId Código del departamento, o null.
+     * @param routeId Código de la ruta, o null.
+     * @param concessionaireId ID del concesionario, o null.
+     * @param text Parte del nombre, o null.
+     * @return Peajes que cumplen todos los filtros, por nombre.
+     */
+    public List<Toll> filterTolls(String departmentId, String routeId, Integer concessionaireId, String text) {
+        String cleanText = text == null || text.isBlank() ? null : text.trim();
+        return tollDAO.filter(departmentId, routeId, concessionaireId, cleanText);
+    }
+
+    /**
+     * Peajes a menos de {@code km} de un punto (función {@code fun_peajes_cercanos}).
+     * @param latitude Latitud.
+     * @param longitude Longitud.
+     * @param km Radio en km (mayor que 0).
+     * @return Peajes del más cercano al más lejano.
+     */
+    public List<Toll> tollsNear(double latitude, double longitude, double km) {
+        if (km <= 0) {
+            throw new IllegalArgumentException("El radio de búsqueda debe ser mayor que 0 km");
+        }
+        return tollDAO.findNear(latitude, longitude, km);
+    }
+
+    /**
+     * Peajes de un viaje en línea recta, en orden y con precio (función {@code fun_peajes_corredor}).
+     * @param originLat Latitud del origen.
+     * @param originLon Longitud del origen.
+     * @param destLat Latitud del destino.
+     * @param destLon Longitud del destino.
+     * @param corridorKm Ancho del corredor en km.
+     * @param routeId Ruta, o null para todas.
+     * @param categoryId Categoría del vehículo.
+     * @return Peajes del viaje con su precio y sus km.
+     */
+    public List<PricedToll> tollsInCorridor(double originLat, double originLon, double destLat, double destLon,
+                                            double corridorKm, String routeId, int categoryId) {
+        return tollDAO.findInCorridor(originLat, originLon, destLat, destLon, corridorKm, routeId, categoryId);
+    }
+
+    /**
+     * Peajes dentro de un rectángulo, con precio (función {@code fun_peajes_en_area}).
+     * @param latMin Latitud mínima.
+     * @param latMax Latitud máxima.
+     * @param lonMin Longitud mínima.
+     * @param lonMax Longitud máxima.
+     * @param routeId Ruta, o null para todas.
+     * @param categoryId Categoría del vehículo.
+     * @return Peajes del rectángulo con su precio.
+     */
+    public List<PricedToll> tollsInArea(double latMin, double latMax, double lonMin, double lonMax,
+                                        String routeId, int categoryId) {
+        return tollDAO.findInArea(latMin, latMax, lonMin, lonMax, routeId, categoryId);
+    }
+
+    /**
      * Lista los peajes de un departamento.
      * @param departmentId Código del departamento (2 caracteres).
      * @return Peajes del departamento.
@@ -273,6 +333,19 @@ public class TollService {
         }
         if (toll.getTollId() <= 0) {
             throw new IllegalArgumentException("El ID del peaje debe ser mayor que 0");
+        }
+        validateData(toll);
+    }
+
+    /**
+     * Revisa los datos de un peaje sin mirar el ID (sirve antes de crearlo, cuando el ID
+     * todavía no existe porque lo pone la base de datos).
+     * @param toll Peaje a revisar.
+     * @throws IllegalArgumentException Si algún dato no es válido.
+     */
+    public void validateData(Toll toll) {
+        if (toll == null) {
+            throw new IllegalArgumentException("El peaje no puede ser nulo");
         }
         String name = toll.getName();
         if (name == null || name.trim().isEmpty()) {

@@ -1,6 +1,7 @@
 package com.invpeajes.persistence;
 
 import com.invpeajes.model.Route;
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,6 +9,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import oracle.jdbc.OracleTypes;
 
 /**
  * Implementación JDBC del DAO de Ruta sobre Oracle (tabla RUTA).
@@ -30,7 +32,12 @@ public class RouteDAO implements CrudDAO<Route, String> {
 
     private static final String SQL_FIND_BY_ID = SQL_SELECT + " WHERE ID_RUTA = ?";
 
-    private static final String SQL_FIND_ALL = SQL_SELECT + " ORDER BY NOMBRE_RUTA";
+    /** Todas las rutas, por nombre (función con cursor). */
+    private static final String SQL_LISTAR_RUTAS = "{ ? = call fun_listar_rutas }";
+    /** Rutas que tienen peajes: opciones del filtro del mapa (función con cursor). */
+    private static final String SQL_RUTAS_CON_PEAJES = "{ ? = call fun_rutas_con_peajes }";
+    /** Rutas que pasan entre un origen y un destino (función con cursor). */
+    private static final String SQL_RUTAS_ENTRE = "{ ? = call fun_rutas_entre(?, ?, ?, ?, ?) }";
 
     private static final String SQL_FIND_BY_MUNICIPALITY =
             SQL_SELECT + " WHERE ID_MUN_ORIGEN = ? OR ID_MUN_DESTINO = ? ORDER BY NOMBRE_RUTA";
@@ -90,14 +97,85 @@ public class RouteDAO implements CrudDAO<Route, String> {
     @Override
     public List<Route> findAll() {
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SQL_FIND_ALL);
-             ResultSet rs = ps.executeQuery()) {
+             CallableStatement cs = conn.prepareCall(SQL_LISTAR_RUTAS)) {
 
-            return mapList(rs);
+            cs.registerOutParameter(1, OracleTypes.CURSOR); // lo que devuelve fun_listar_rutas
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapList(rs);
+            }
 
         } catch (SQLException e) {
             throw new DataAccessException("No se pudo listar las rutas", e);
         }
+    }
+
+    /**
+     * Rutas que tienen al menos un peaje ({@code fun_rutas_con_peajes}).
+     * Son las opciones del filtro "Ruta" del mapa.
+     *
+     * @return rutas con peajes, por nombre (sin municipios de origen y destino)
+     * @throws DataAccessException si falla la consulta
+     */
+    public List<Route> findWithTolls() {
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(SQL_RUTAS_CON_PEAJES)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR);
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapIdAndName(rs);
+            }
+
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudo listar las rutas con peajes", e);
+        }
+    }
+
+    /**
+     * Rutas que pasan entre un origen y un destino ({@code fun_rutas_entre}): las que tienen
+     * peajes en el corredor de {@code corridorKm} km, primero las que tienen más peajes.
+     * Son las opciones del combo "Ruta" de Planificar viaje.
+     *
+     * @param originLat  latitud del origen
+     * @param originLon  longitud del origen
+     * @param destLat    latitud del destino
+     * @param destLon    longitud del destino
+     * @param corridorKm ancho del corredor en km
+     * @return rutas del trayecto (sin municipios de origen y destino)
+     * @throws DataAccessException si falla la consulta
+     */
+    public List<Route> findBetween(double originLat, double originLon, double destLat, double destLon,
+                                   double corridorKm) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             CallableStatement cs = conn.prepareCall(SQL_RUTAS_ENTRE)) {
+
+            cs.registerOutParameter(1, OracleTypes.CURSOR);
+            cs.setDouble(2, originLat);  // x_lat_origen
+            cs.setDouble(3, originLon);  // x_lon_origen
+            cs.setDouble(4, destLat);    // x_lat_destino
+            cs.setDouble(5, destLon);    // x_lon_destino
+            cs.setDouble(6, corridorKm); // x_km
+            cs.execute();
+
+            try (ResultSet rs = (ResultSet) cs.getObject(1)) {
+                return mapIdAndName(rs);
+            }
+
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudieron consultar las rutas del trayecto", e);
+        }
+    }
+
+    /** Cursores que solo traen ID_RUTA y NOMBRE_RUTA (y el número de peajes). */
+    private List<Route> mapIdAndName(ResultSet rs) throws SQLException {
+        List<Route> routes = new ArrayList<>();
+        while (rs.next()) {
+            routes.add(new Route(rs.getString("ID_RUTA"), rs.getString("NOMBRE_RUTA"), null, null));
+        }
+        return routes;
     }
 
     /**

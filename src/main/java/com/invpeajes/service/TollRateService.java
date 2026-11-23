@@ -1,6 +1,7 @@
 package com.invpeajes.service;
 
 import com.invpeajes.model.TollRate;
+import com.invpeajes.persistence.DatabaseFunctionsDAO;
 import com.invpeajes.persistence.TollRateDao;
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -26,6 +27,7 @@ public class TollRateService {
     private static final int ORACLE_PARENT_NOT_FOUND_ERROR = 2291;
 
     private final TollRateDao tollRateDAO;
+    private final DatabaseFunctionsDAO functionsDAO = new DatabaseFunctionsDAO();
 
     /**
      * Crea el servicio con su acceso a datos por defecto.
@@ -85,7 +87,8 @@ public class TollRateService {
     }
 
     /**
-     * Obtiene el precio que cobra un peaje a una categoría vehicular.
+     * Obtiene el precio que cobra un peaje a una categoría vehicular con la función
+     * {@code fun_tarifa} de la base (la misma que usan los paquetes al cobrar).
      *
      * @param tollId     identificador del peaje
      * @param categoryId identificador de la categoría vehicular
@@ -95,7 +98,26 @@ public class TollRateService {
      * @throws SQLException             si ocurre un error en la consulta
      */
     public BigDecimal findPrice(int tollId, int categoryId) throws SQLException {
-        return findById(tollId, categoryId).getPrice();
+        if (tollId <= 0 || categoryId <= 0) {
+            throw new IllegalArgumentException("El peaje y la categoría deben ser mayores que cero");
+        }
+        BigDecimal price = functionsDAO.rate(tollId, categoryId);
+        if (price == null) {
+            throw new IllegalArgumentException("El peaje " + tollId + " no tiene tarifa para la categoría "
+                    + categoryId);
+        }
+        return price;
+    }
+
+    /**
+     * Precio de cada peaje para una categoría (función {@code fun_tarifas_categoria}).
+     *
+     * @param categoryId categoría vehicular
+     * @return una tarifa por peaje que tenga precio para esa categoría
+     * @throws SQLException si ocurre un error en la consulta
+     */
+    public List<TollRate> findByCategory(int categoryId) throws SQLException {
+        return tollRateDAO.findByCategory(categoryId);
     }
 
     /**

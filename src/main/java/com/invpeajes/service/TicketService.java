@@ -73,6 +73,31 @@ public class TicketService {
     }
 
     /**
+     * Registra un cobro con el procedimiento {@code pkg_tiquetes.Pr_registrar_tiquete} y devuelve
+     * el tiquete tal como quedó en la base (prefijo, consecutivo, fecha y valores).
+     *
+     * @param operatorId    cédula del operador (debe tener el turno abierto)
+     * @param licensePlate  placa del vehículo
+     * @param categoryId    categoría del vehículo
+     * @param paymentMethod EFECTIVO, TARJETA o TAG_COLPASS
+     * @param serviceAmount servicios adicionales; {@code null} equivale a cero
+     * @return el tiquete registrado
+     * @throws IllegalArgumentException si algún dato no es válido
+     * @throws SQLException si la base rechaza el cobro
+     */
+    public Ticket registerWithProcedure(String operatorId, String licensePlate, int categoryId,
+                                        String paymentMethod, BigDecimal serviceAmount) throws SQLException {
+        String plate = normalizeLicensePlate(licensePlate);
+        String method = normalizePaymentMethod(paymentMethod);
+        long id = ticketDAO.registerWithProcedure(operatorId, plate, categoryId, method, serviceAmount);
+        Ticket ticket = ticketDAO.findById(id);
+        if (ticket == null) {
+            throw new SQLException("La base no devolvió el tiquete " + id);
+        }
+        return ticket;
+    }
+
+    /**
      * Registra el cobro de un peaje y emite su tiquete.
      * <p>
      * La tarifa se toma de la base de datos, el consecutivo se calcula según el

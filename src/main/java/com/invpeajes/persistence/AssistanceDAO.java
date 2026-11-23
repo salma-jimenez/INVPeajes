@@ -4,7 +4,6 @@ import com.invpeajes.model.Assistance;
 import com.invpeajes.model.AssistanceHistory;
 import com.invpeajes.model.AssistanceStatus;
 import com.invpeajes.model.AssistanceType;
-import com.invpeajes.model.ResourceAvailability;
 
 import java.sql.CallableStatement;
 import java.sql.Connection;
@@ -12,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -23,9 +23,12 @@ import java.util.Optional;
  * <p>Desde la etapa 4 de la base de datos, el historial y el recurso los maneja
  * el trigger {@code trg_historial_asistencia}: al crear la asistencia guarda la
  * fila inicial, y en cada cambio de estado guarda el cambio, ocupa el recurso al
- * ASIGNAR y lo libera al quedar ATENDIDA o CANCELADA. Este DAO solo le pasa la
- * observación del cambio por medio de {@code pkg_control.g_nota_historial}.
- * Los ID de ASISTENCIA e HISTORIAL_ASISTENCIA los genera la base (IDENTITY).</p>
+ * ASIGNAR y lo libera al quedar ATENDIDA o CANCELADA.</p>
+ *
+ * <p>Las solicitudes se crean con {@code pkg_asistencias.Pr_solicitar_asistencia} y los cambios
+ * de estado se hacen con {@code pkg_asistencias.Pr_cambiar_estado_asistencia}, que recibe la
+ * cédula del jefe de estación. Los ID de ASISTENCIA e HISTORIAL_ASISTENCIA los genera la base
+ * (IDENTITY).</p>
  *
  * @author Salomejimenez
  */
@@ -36,22 +39,33 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
             + "ESTADO_ACTUAL, OBSERVACIONES, TELEFONO_CONTACTO, COSTO, PLACA, ID_PEAJE, ID_RECURSO, ID_TIQUETE, "
             + "ID_VIAJERO";
     private static final String COLUMNS = "ID_ASISTENCIA, " + INSERT_COLUMNS;
-    private static final String INSERT_SQL =
-            "INSERT INTO PEAJE.ASISTENCIA (" + INSERT_COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String SELECT_SQL =
             "SELECT " + COLUMNS + " FROM PEAJE.ASISTENCIA ";
     private static final String UPDATE_SQL =
             "UPDATE PEAJE.ASISTENCIA SET TIPO_ASISTENCIA = ?, LATITUD_INCIDENTE = ?, LONGITUD_INCIDENTE = ?, "
             + "OBSERVACIONES = ?, TELEFONO_CONTACTO = ?, COSTO = ?, PLACA = ?, ID_PEAJE = ?, ID_RECURSO = ?, "
             + "ID_TIQUETE = ? WHERE ID_ASISTENCIA = ?";
+    /**
+     * Solicitud nueva con {@code pkg_asistencias.Pr_solicitar_asistencia}. Antes se deja la nota
+     * que el trigger guarda en la primera fila del historial (misma conexión y misma sesión).
+     */
+    private static final String REQUEST_SQL =
+            "BEGIN "
+          + "  pkg_control.g_nota_historial := ?; "
+          + "  pkg_asistencias.Pr_solicitar_asistencia(p_tipo => ?, p_peaje => ?, p_telefono => ?, "
+          + "      p_latitud => ?, p_longitud => ?, p_id_asistencia => ?, p_placa => ?, "
+          + "      p_observaciones => ?, p_id_viajero => ?); "
+          + "END;";
+    /** Cambio de estado hecho por el jefe de estación ({@code Pr_cambiar_estado_asistencia}). */
     private static final String CHANGE_STATUS_SQL =
-            "UPDATE PEAJE.ASISTENCIA SET ESTADO_ACTUAL = ?, ID_RECURSO = ?, COSTO = ? WHERE ID_ASISTENCIA = ?";
+            "BEGIN pkg_asistencias.Pr_cambiar_estado_asistencia(p_cedula_jefe => ?, p_asistencia => ?, "
+          + "p_estado => ?, p_observacion => ?, p_recurso => ?, p_costo => ?); END;";
+    /** Datos que el procedimiento no recibe (ID_TIQUETE y COSTO inicial). */
+    private static final String EXTRA_DATA_SQL =
+            "UPDATE PEAJE.ASISTENCIA SET ID_TIQUETE = ?, COSTO = ? WHERE ID_ASISTENCIA = ?";
     private static final String DELETE_SQL =
             "DELETE FROM PEAJE.ASISTENCIA WHERE ID_ASISTENCIA = ?";
 
-    /** Observación que trg_historial_asistencia copia en la fila del historial. */
-    private static final String SET_HISTORY_NOTE_SQL =
-            "BEGIN pkg_control.g_nota_historial := ?; END;";
     private static final String HISTORY_FIND_SQL =
             "SELECT * FROM PEAJE.HISTORIAL_ASISTENCIA WHERE ID_ASISTENCIA = ? "
             + "ORDER BY FECHA_CAMBIO, ID_HISTORIAL";
@@ -72,16 +86,37 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     }
 
     /**
-     * Inserta la asistencia y asigna a la asistencia recibida el id que generó la base.
-     * La fila inicial del historial la guarda el trigger, con la nota "Solicitud registrada".
+     * Registra la solicitud con {@code pkg_asistencias.Pr_solicitar_asistencia} y asigna a la
+     * asistencia recibida el ID que generó la base. La fila inicial del historial la guarda el
+     * trigger {@code trg_historial_asistencia}, con la nota "Solicitud registrada".
      */
     @Override
     public void insert(Assistance assistance) {
         try (Connection con = DatabaseConnection.getConnection()) {
             con.setAutoCommit(false);
             try {
-                setHistoryNote(con, "Solicitud registrada");
-                assistance.setAssistanceId(insertRow(con, assistance));
+                try (CallableStatement cs = con.prepareCall(REQUEST_SQL)) {
+                    cs.setString(1, "Solicitud registrada");
+                    cs.setString(2, assistance.getType().getDbValue());
+                    cs.setInt(3, assistance.getTollId());
+                    cs.setString(4, assistance.getContactPhone());
+                    JdbcUtils.setNullableDouble(cs, 5, assistance.getIncidentLatitude());
+                    JdbcUtils.setNullableDouble(cs, 6, assistance.getIncidentLongitude());
+                    cs.registerOutParameter(7, Types.NUMERIC);
+                    cs.setString(8, assistance.getPlate());
+                    cs.setString(9, assistance.getNotes());
+                    JdbcUtils.setNullableInt(cs, 10, assistance.getTravelerId());
+                    cs.execute();
+                    assistance.setAssistanceId(cs.getInt(7));
+                }
+                if (assistance.getTicketId() != null || assistance.getCost() != null) {
+                    try (PreparedStatement ps = con.prepareStatement(EXTRA_DATA_SQL)) {
+                        JdbcUtils.setNullableLong(ps, 1, assistance.getTicketId());
+                        ps.setBigDecimal(2, assistance.getCost());
+                        ps.setInt(3, assistance.getAssistanceId());
+                        ps.executeUpdate();
+                    }
+                }
                 con.commit();
             } catch (SQLException e) {
                 con.rollback();
@@ -175,36 +210,39 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
     }
 
     /**
-     * Guarda el nuevo estado de la asistencia. El trigger {@code trg_historial_asistencia}
-     * registra el cambio en el historial (con la nota indicada) y ocupa o libera el recurso.
+     * Cambia el estado de una asistencia con {@code pkg_asistencias.Pr_cambiar_estado_asistencia}.
+     * La base revisa que el jefe sea del peaje de la asistencia, que el cambio esté permitido y, al
+     * ASIGNAR, que el recurso esté DISPONIBLE. El trigger {@code trg_historial_asistencia} guarda
+     * la fila del historial (con la nota) y ocupa o libera el recurso.
      *
-     * @param assistance           asistencia con el estado nuevo ya asignado
-     * @param previousStatus       estado que tenía antes del cambio (lo guarda el trigger)
-     * @param notes                motivo del cambio
-     * @param resourceAvailability no se usa: la disponibilidad la cambia el trigger
-     * @return true si se actualizó la asistencia
+     * @param managerId    cédula del jefe de estación
+     * @param assistanceId asistencia
+     * @param status       estado nuevo (valor de la base, ej. ASIGNADA)
+     * @param notes        motivo del cambio (va al historial)
+     * @param resourceId   recurso, solo al asignar; si no, null
+     * @param cost         costo, solo al atender; si no, null
+     * @throws DataAccessException si la base rechaza el cambio
      */
-    public boolean changeStatus(Assistance assistance, AssistanceStatus previousStatus, String notes,
-                                ResourceAvailability resourceAvailability) {
-        try (Connection con = DatabaseConnection.getConnection()) {
-            con.setAutoCommit(false);
-            try (PreparedStatement ps = con.prepareStatement(CHANGE_STATUS_SQL)) {
-                setHistoryNote(con, notes);
-                ps.setString(1, assistance.getCurrentStatus().getDbValue());
-                JdbcUtils.setNullableInt(ps, 2, assistance.getResourceId());
-                ps.setBigDecimal(3, assistance.getCost());
-                ps.setInt(4, assistance.getAssistanceId());
-                boolean updated = ps.executeUpdate() > 0;
-                con.commit();
-                return updated;
-            } catch (SQLException e) {
-                con.rollback();
-                throw e;
-            }
+    public void changeStatus(String managerId, int assistanceId, String status, String notes,
+                             Integer resourceId, java.math.BigDecimal cost) {
+        try (Connection con = DatabaseConnection.getConnection();
+             CallableStatement cs = con.prepareCall(CHANGE_STATUS_SQL)) {
+            cs.setString(1, managerId);
+            cs.setInt(2, assistanceId);
+            cs.setString(3, status);
+            cs.setString(4, limit(notes));
+            JdbcUtils.setNullableInt(cs, 5, resourceId);
+            cs.setBigDecimal(6, cost);
+            cs.execute();
         } catch (SQLException e) {
-            throw new DataAccessException(
-                    "Error al cambiar el estado de la asistencia " + assistance.getAssistanceId(), e);
+            throw new DataAccessException("Error al cambiar el estado de la asistencia " + assistanceId, e);
         }
+    }
+
+    /** La observación del historial admite máximo 200 caracteres. */
+    private static String limit(String notes) {
+        String note = notes == null || notes.isBlank() ? null : notes.trim();
+        return note != null && note.length() > 200 ? note.substring(0, 200) : note;
     }
 
     /**
@@ -241,44 +279,6 @@ public class AssistanceDAO implements CrudDAO<Assistance, Integer> {
             return history;
         } catch (SQLException e) {
             throw new DataAccessException("Error al consultar el historial de la asistencia " + assistanceId, e);
-        }
-    }
-
-    /** Inserta la fila y devuelve el ID_ASISTENCIA que generó la base. */
-    private int insertRow(Connection con, Assistance a) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement(INSERT_SQL, new String[] {"ID_ASISTENCIA"})) {
-            ps.setString(1, a.getType().getDbValue());
-            ps.setTimestamp(2, Timestamp.valueOf(a.getRequestDate()));
-            JdbcUtils.setNullableDouble(ps, 3, a.getIncidentLatitude());
-            JdbcUtils.setNullableDouble(ps, 4, a.getIncidentLongitude());
-            ps.setString(5, a.getCurrentStatus().getDbValue());
-            ps.setString(6, a.getNotes());
-            ps.setString(7, a.getContactPhone());
-            ps.setBigDecimal(8, a.getCost());
-            ps.setString(9, a.getPlate());
-            ps.setInt(10, a.getTollId());
-            JdbcUtils.setNullableInt(ps, 11, a.getResourceId());
-            JdbcUtils.setNullableLong(ps, 12, a.getTicketId());
-            JdbcUtils.setNullableInt(ps, 13, a.getTravelerId());
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new SQLException("La base de datos no devolvió el ID de la asistencia");
-                }
-                return keys.getInt(1);
-            }
-        }
-    }
-
-    /** Deja en la sesión la nota que el trigger guardará en el historial (máximo 200 caracteres). */
-    private void setHistoryNote(Connection con, String notes) throws SQLException {
-        String note = notes == null || notes.isBlank() ? null : notes.trim();
-        if (note != null && note.length() > 200) {
-            note = note.substring(0, 200);
-        }
-        try (CallableStatement cs = con.prepareCall(SET_HISTORY_NOTE_SQL)) {
-            cs.setString(1, note);
-            cs.execute();
         }
     }
 

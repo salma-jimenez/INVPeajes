@@ -388,6 +388,18 @@ public class TollMap extends JPanel {
     }
 
     /**
+     * Acerca el mapa a un punto (por ejemplo, un centro de salud de la lista del viaje).
+     *
+     * @param latitude  latitud
+     * @param longitude longitud
+     */
+    public void centerOn(double latitude, double longitude) {
+        viewer.setZoom(Math.min(viewer.getZoom(), DETAIL_ZOOM - 2));
+        viewer.setAddressLocation(new GeoPosition(latitude, longitude));
+        viewer.repaint();
+    }
+
+    /**
      * Marca (o quita) el punto donde está el viajero.
      *
      * @param position posición, o null para quitarla
