@@ -4,6 +4,7 @@ import com.invpeajes.model.CashierSession;
 import com.invpeajes.model.CategoryRate;
 import com.invpeajes.model.ChargeReceipt;
 import com.invpeajes.service.CashierService;
+import com.invpeajes.service.ReceiptMailService;
 import com.invpeajes.ui.common.Async;
 import com.invpeajes.ui.common.FlatButton;
 import com.invpeajes.ui.common.Theme;
@@ -62,6 +63,7 @@ public class CashierPanel extends JPanel {
     }
 
     private final CashierService service;
+    private final ReceiptMailService mailService = new ReceiptMailService();
     private final CashierSession session;
     private final ShiftLog log;
     private final List<String> allowedMethods;
@@ -471,6 +473,7 @@ public class CashierPanel extends JPanel {
                     chargeButton.setEnabled(true);
                     log.add(receipt);
                     clearForm();
+                    sendReceiptByEmail(receipt);
                     new ReceiptDialog(SwingUtilities.getWindowAncestor(this), receipt, false).setVisible(true);
                     plateField.requestFocusInWindow();
                 },
@@ -478,6 +481,32 @@ public class CashierPanel extends JPanel {
                     chargeButton.setEnabled(true);
                     showError(error.getMessage());
                 });
+    }
+
+    /**
+     * Envía el recibo al correo del viajero dueño de la placa, en segundo plano.
+     * El cobro ya quedó guardado: si el correo falla solo se avisa en la barra de estado.
+     * @param receipt Cobro recién guardado.
+     */
+    private void sendReceiptByEmail(ChargeReceipt receipt) {
+        String ticket = receipt.getTicketNumber();
+        statusLabel.setForeground(Theme.MUTED);
+        statusLabel.setText("Tiquete " + ticket + ": buscando correo del viajero…");
+        Async.run(() -> mailService.sendReceipt(receipt),
+                sent -> {
+                    if (sent.isEmpty()) {
+                        statusLabel.setForeground(Theme.MUTED);
+                        statusLabel.setText("Tiquete " + ticket + ": la placa " + receipt.getPlate()
+                                + " no tiene viajero registrado; no se envió correo");
+                    } else {
+                        statusLabel.setForeground(Theme.SUCCESS);
+                        statusLabel.setText("Tiquete " + ticket + ": recibo enviado a "
+                                + sent.stream().map(ReceiptMailService::maskEmail)
+                                        .collect(java.util.stream.Collectors.joining(", ")));
+                    }
+                },
+                error -> showError("Tiquete " + ticket + " guardado, pero no se pudo enviar el recibo por correo: "
+                        + error.getMessage()));
     }
 
     /**

@@ -12,8 +12,8 @@ import java.util.Optional;
 
 /**
  * Acceso a la tabla VIAJERO (cuentas de los viajeros).
- * Implementa el CRUD genérico de {@link CrudDAO} y agrega la búsqueda por correo
- * y el cambio de contraseña.
+ * Implementa el CRUD genérico de {@link CrudDAO} y agrega la búsqueda por correo,
+ * la búsqueda por placa y el cambio de contraseña.
  *
  * @author Salomejimenez
  * @version 1.0
@@ -107,6 +107,20 @@ public class TravelerDAO implements CrudDAO<Traveler, Integer> {
     public Optional<Traveler> findByEmail(String email) {
         List<Traveler> result = query(SQL_SELECT + "WHERE LOWER(CORREO) = LOWER(?)", email);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
+    }
+
+    /**
+     * Busca los viajeros que registraron una placa. Puede haber más de uno
+     * (por ejemplo, dos personas que usan el mismo carro).
+     * @param plate Placa del vehículo.
+     * @return Viajeros con esa placa; vacío si no hay ninguno.
+     * @throws DataAccessException Si falla la consulta.
+     */
+    public List<Traveler> findByPlate(String plate) {
+        if (plate == null || plate.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        return query(SQL_SELECT + "WHERE UPPER(PLACA) = UPPER(?)", plate.trim());
     }
 
     /**
