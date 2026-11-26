@@ -1,79 +1,86 @@
-
 package com.invpeajes.model;
 
 /**
  * Representa la entidad geográfica de un Municipio en el sistema de peajes.
- * Esta clase almacena la información básica del municipio y actúa como puente
- * de ubicación para las estaciones de peaje y las rutas.
- * 
+ * Esta clase almacena la información básica del municipio y sus coordenadas
+ * geográficas para el cálculo de rutas y ubicación de estaciones de peaje.
+ *
  * @author Luis Guerrero
- * @version 1.0
+ * @version 1.1
  */
 public class Municipality {
     private String municipalityId;
     private String name;
-    private String departmentId; // Llave foránea
+    private String departmentId;
+    private double latitude;
+    private double longitude;
 
     /**
-     * Constructor que inicializa un nuevo Municipio con todos sus datos.
-     * 
+     * Constructor básico sin coordenadas explícitas.
+     *
      * @param municipalityId Identificador único del municipio (Llave primaria).
-     * @param name Nombre oficial del municipio.
-     * @param departmentId Identificador del departamento al que pertenece (Llave foránea).
+     * @param name           Nombre oficial del municipio.
+     * @param departmentId   Identificador del departamento al que pertenece (Llave foránea).
      */
     public Municipality(String municipalityId, String name, String departmentId) {
+        this(municipalityId, name, departmentId, 0.0, 0.0);
+    }
+
+    /**
+     * Constructor que inicializa un nuevo Municipio con todos sus datos y coordenadas.
+     *
+     * @param municipalityId Identificador único del municipio (Llave primaria).
+     * @param name           Nombre oficial del municipio.
+     * @param departmentId   Identificador del departamento al que pertenece (Llave foránea).
+     * @param latitude       Latitud geográfica en grados decimales.
+     * @param longitude      Longitud geográfica en grados decimales.
+     */
+    public Municipality(String municipalityId, String name, String departmentId,
+                        double latitude, double longitude) {
         this.municipalityId = municipalityId;
         this.name = name;
         this.departmentId = departmentId;
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
-    
-    /**
-     * Obtiene el identificador del municipio.
-     * @return El ID del municipio.
-     */
+
     public String getMunicipalityId() {
         return municipalityId;
     }
 
-    /**
-     * Establece o modifica el identificador del municipio.
-     * @param municipalityId El nuevo ID a asignar.
-     */
     public void setMunicipalityId(String municipalityId) {
         this.municipalityId = municipalityId;
     }
 
-    /**
-     * Obtiene el nombre del municipio.
-     * @return El nombre completo del municipio.
-     */
     public String getName() {
         return name;
     }
 
-    /**
-     * Establece o modifica el nombre del municipio.
-     * @param name El nuevo nombre a asignar.
-     */
     public void setName(String name) {
         this.name = name;
     }
 
-    /**
-     * Obtiene el identificador del departamento asociado.
-     * @return El ID del departamento.
-     */
     public String getDepartmentId() {
         return departmentId;
     }
 
-    /**
-     * Establece o modifica el identificador del departamento.
-     * @param departmentId El nuevo ID de departamento a vincular.
-     */
     public void setDepartmentId(String departmentId) {
         this.departmentId = departmentId;
     }
-    
-    
+
+    public double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(double latitude) {
+        this.latitude = latitude;
+    }
+
+    public double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(double longitude) {
+        this.longitude = longitude;
+    }
 }
