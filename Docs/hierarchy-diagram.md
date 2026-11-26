@@ -1,55 +1,35 @@
-# Markdown Cheat Sheet (Example File)
+#---
 
-This is a **generic Markdown template** showcasing essential formatting features.
+### Diagrama de jerarquía (`hierarchy-diagram.md`)
 
----
+```markdown
+# Hierarchy Diagram — INVPeajes
 
-## 1. Headers
-# H1 (Largest)
-## H2
-### H3
-#### H4
-##### H5
-###### H6 (Smallest)
+```mermaid
+flowchart TD
+    APP["INVPeajes (com.invpeajes)"]
 
----
+    APP --> UI["ui (User Interface & Navigation)"]
+    APP --> SVC["service (Business Services)"]
+    APP --> PER["persistence (Data Persistence & DB)"]
+    APP --> MOD["model (Domain Entities)"]
 
-## 2. Text Formatting
-- **Bold** (`**text**` or `__text__`)
-- *Italic* (`*text*` or `_text_`)
-- ~~Strikethrough~~ (`~~text~~`)
-- `Inline Code` (`` `code` ``)
-- > Blockquote (prefix with `>`)
+    UI --> UI_MAIN["VentanaPrincipal, BarraLateral, Tema"]
+    UI --> UI_PANELS["PanelInicio, PanelInventario, PanelDetallePeaje, PanelEnConstruccion"]
+    UI --> UI_DATA["MapaPeajes, DatosPeajes, FuenteDatos, FuenteDatosOracle"]
 
----
+    SVC --> SVC_TOLL["PeajeService, TicketService, TollRatesService"]
+    SVC --> SVC_VEH["VehicleService, VehicleCategoryService"]
+    SVC --> SVC_AST["AssistanceService, AssistanceResourceService"]
+    SVC --> SVC_ERR["ValidationException"]
 
-## 3. Lists
-### Unordered List
-- Item 1
-- Item 2
-  - Nested Item (indent with 2 spaces)
+    PER --> PER_CONN["CrudDAO, DatabaseConnection, VehicleConnectionFactory, JdbcUtils, DataAccessException"]
+    PER --> PER_TOLL["IPeajeDAO / PeajeDAOImpl, ICasetaDAO / CasetaDAOImpl, TicketDao, TollRateDao, TollUserDao"]
+    PER --> PER_GEO["IRutaDAO / RutaDAOImpl, ISectorDAO / SectorDAOImpl, IDepartamentoDAO / DepartamentoDAOImpl, IConcesionarioDAO / ConcesionarioDAOImpl, IIntermediadorDAO / IntermediadorDAOImpl"]
+    PER --> PER_VEH["IVehicleDAO / VehicleDAOImpl, IVehicleCategoryDAO / VehicleCategoryDAOImpl"]
+    PER --> PER_AST["IAssistanceDAO / AssistanceDAOImpl, IAssistanceHistoryDAO / AssistanceHistoryDAOImpl, IAssistanceResourceDAO / AssistanceResourceDAOImpl"]
 
-### Ordered List
-1. First item
-2. Second item
-   1. Nested item (indent with 3 spaces)
-
-### Task List
-- [x] Completed task
-- [ ] Pending task (`[ ]`)
-
----
-
-## 4. Links
-- [Hyperlink](https://example.com) (`[text](url)`)
-
----
-
-## 5. Code Blocks
-```java
-# Syntax-highlighted block (java)
-class HelloWorld {
-    public static main(String... args) {
-        System.out.println("Hello markdown");
-    }
-}
+    MOD --> MOD_TOLL["Peaje -> PeajeElectronico, PeajeManual | Caseta | Ticket | TollRate | TollUser"]
+    MOD --> MOD_VEH["Vehicle | VehicleCategory"]
+    MOD --> MOD_AST["Assistance | AssistanceHistory | AssistanceResource | AssistanceStatus | AssistanceType | ResourceAvailability"]
+    MOD --> MOD_GEO["Ruta | Sector | Departamento | Municipio | Concesionario | Intermediador"]
