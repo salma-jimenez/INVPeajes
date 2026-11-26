@@ -11,9 +11,11 @@ import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -27,7 +29,7 @@ import javax.swing.table.JTableHeader;
  * Los colores base vienen de {@link Theme}, igual que en caja y estación.
  *
  * @author Salma Jiménez Vega
- * @version 1.0
+ * @version 1.3
  */
 public final class TravelerUi {
 
@@ -163,9 +165,9 @@ public final class TravelerUi {
      * @param combo combo de categorías
      */
     public static void useCategoryText(JComboBox<com.invpeajes.model.VehicleCategory> combo) {
-        combo.setRenderer(new javax.swing.DefaultListCellRenderer() {
+        combo.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(javax.swing.JList<?> list, Object value, int index,
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                           boolean selected, boolean focus) {
                 super.getListCellRendererComponent(list, value, index, selected, focus);
                 if (value instanceof com.invpeajes.model.VehicleCategory) {
@@ -174,6 +176,29 @@ public final class TravelerUi {
                 return this;
             }
         });
+    }
+
+    /**
+     * Convierte un combo de municipios en buscable con vista compacta de dos líneas:
+     * sin foco muestra el municipio en negrita arriba y el departamento abajo;
+     * al hacer clic permite escribir y borrar libremente para filtrar la lista.
+     *
+     * @param combo combo de municipios
+     */
+    public static void makeSearchable(JComboBox<City> combo) {
+        CitySearchSupport.install(combo);
+    }
+
+    /**
+     * Carga la lista completa de municipios en un combo (buscable o estándar)
+     * y selecciona el municipio indicado por defecto.
+     *
+     * @param combo       combo a actualizar
+     * @param items       lista completa de municipios desde la base de datos
+     * @param defaultItem municipio seleccionado inicialmente
+     */
+    public static void setComboItems(JComboBox<City> combo, List<City> items, City defaultItem) {
+        CitySearchSupport.setItems(combo, items, defaultItem);
     }
 
     /**
@@ -199,8 +224,8 @@ public final class TravelerUi {
         combo.setFont(Theme.font(Font.PLAIN, 14));
         combo.setForeground(Theme.TEXT);
         combo.setBackground(Color.WHITE);
-        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
-        combo.setPreferredSize(new Dimension(200, 36));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        combo.setPreferredSize(new Dimension(200, 38));
     }
 
     /**
@@ -324,34 +349,26 @@ public final class TravelerUi {
         return label;
     }
 
-    /** Ciudad de origen o destino para planificar un viaje. */
+    /** Municipio de origen o destino cargado desde la base de datos. */
     public static final class City {
-        /** Capitales y ciudades principales (coordenadas aproximadas del centro). */
-        public static final List<City> MAIN = List.of(
-                new City("Armenia", 4.533, -75.681), new City("Barranquilla", 10.964, -74.796),
-                new City("Bogotá", 4.711, -74.072), new City("Bucaramanga", 7.119, -73.122),
-                new City("Cali", 3.451, -76.532), new City("Cartagena", 10.391, -75.479),
-                new City("Cúcuta", 7.893, -72.508), new City("Ibagué", 4.438, -75.232),
-                new City("Manizales", 5.070, -75.513), new City("Medellín", 6.244, -75.581),
-                new City("Montería", 8.750, -75.881), new City("Neiva", 2.927, -75.282),
-                new City("Pasto", 1.214, -77.281), new City("Pereira", 4.813, -75.696),
-                new City("Popayán", 2.444, -76.614), new City("Riohacha", 11.544, -72.907),
-                new City("Santa Marta", 11.241, -74.199), new City("Sincelejo", 9.304, -75.397),
-                new City("Tunja", 5.535, -73.367), new City("Valledupar", 10.463, -73.253),
-                new City("Villavicencio", 4.142, -73.627), new City("Yopal", 5.337, -72.395));
-
         private final String name;
+        private final String departmentName;
         private final double latitude;
         private final double longitude;
 
-        public City(String name, double latitude, double longitude) {
-            this.name = name;
+        public City(String name, String departmentName, double latitude, double longitude) {
+            this.name = formatPlace(name);
+            this.departmentName = shortDepartment(formatPlace(departmentName));
             this.latitude = latitude;
             this.longitude = longitude;
         }
 
         public String getName() {
             return name;
+        }
+
+        public String getDepartmentName() {
+            return departmentName;
         }
 
         public double getLatitude() {
@@ -362,9 +379,56 @@ public final class TravelerUi {
             return longitude;
         }
 
+        private static String formatPlace(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return raw;
+            }
+            String trimmed = raw.trim();
+            if (!trimmed.equals(trimmed.toUpperCase(Locale.ROOT))) {
+                return trimmed;
+            }
+            String[] words = trimmed.toLowerCase(Locale.ROOT).split("\\s+");
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < words.length; i++) {
+                if (i > 0) {
+                    sb.append(' ');
+                }
+                String w = words[i];
+                if ("d.c.".equals(w) || "d.c".equals(w)) {
+                    sb.append("D.C.");
+                } else if (i > 0 && (w.equals("de") || w.equals("del") || w.equals("la")
+                        || w.equals("las") || w.equals("los") || w.equals("y") || w.equals("en"))) {
+                    sb.append(w);
+                } else {
+                    sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+                }
+            }
+            return sb.toString();
+        }
+
+        private static String shortDepartment(String dept) {
+            if (dept == null || dept.isBlank()) {
+                return dept;
+            }
+            String norm = normalize(dept);
+            if (norm.contains("san andres")) {
+                return "San Andrés y Providencia";
+            }
+            if (norm.startsWith("bogota")) {
+                return "Bogotá, D.C.";
+            }
+            return dept;
+        }
+
         @Override
         public String toString() {
-            return name;
+            if (departmentName == null || departmentName.isBlank()) {
+                return name;
+            }
+            if (normalize(name).startsWith("bogota") && normalize(departmentName).startsWith("bogota")) {
+                return "Bogotá, D.C.";
+            }
+            return name + ", " + departmentName;
         }
     }
 }

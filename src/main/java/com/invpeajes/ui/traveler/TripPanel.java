@@ -1,6 +1,7 @@
 package com.invpeajes.ui.traveler;
 
 import com.invpeajes.model.HealthCenter;
+import com.invpeajes.model.Municipality;
 import com.invpeajes.model.Route;
 import com.invpeajes.model.Toll;
 import com.invpeajes.model.VehicleCategory;
@@ -28,11 +29,9 @@ import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -60,7 +59,7 @@ import org.jxmapviewer.viewer.GeoPosition;
  * Al escoger un peaje (en la lista o en el mapa) aparece su ficha sobre el mapa.</p>
  *
  * @author Salma Jiménez Vega
- * @version 3.0
+ * @version 3.4
  */
 public class TripPanel extends JPanel {
 
@@ -86,8 +85,8 @@ public class TripPanel extends JPanel {
 
     private final TravelerService service;
     private final Consumer<Toll> onShowOnMap;
-    private final JComboBox<City> origin = TravelerUi.combo(City.MAIN);
-    private final JComboBox<City> destination = TravelerUi.combo(City.MAIN);
+    private final JComboBox<City> origin = new JComboBox<>();
+    private final JComboBox<City> destination = new JComboBox<>();
     private final JComboBox<Object> route = new JComboBox<>();
     private final JComboBox<VehicleCategory> category = new JComboBox<>();
     private final FlatButton calculate = Theme.primaryButton("Calcular viaje");
@@ -123,6 +122,7 @@ public class TripPanel extends JPanel {
     private int routesRequest;
     private TripPlan plan;
     private VehicleCategory planCategory;
+    private boolean loadingCities;
 
     /**
      * @param service     servicio del viajero
@@ -135,8 +135,10 @@ public class TripPanel extends JPanel {
         setBackground(Theme.BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(18, 22, 18, 22));
 
-        destination.setSelectedItem(City.MAIN.get(9)); // Medellín
-        origin.setSelectedItem(City.MAIN.get(2));      // Bogotá
+        TravelerUi.styleCombo(origin);
+        TravelerUi.styleCombo(destination);
+        TravelerUi.makeSearchable(origin);
+        TravelerUi.makeSearchable(destination);
         TravelerUi.styleCombo(route);
         TravelerUi.styleCombo(category);
         useShortCategoryText(category);
@@ -162,7 +164,7 @@ public class TripPanel extends JPanel {
 
     // ------------------------------------------------------------------ Partes de la pantalla
 
-    /** Formulario compacto: origen y destino en una fila, ruta y categoría en otra. */
+    /** Formulario compacto: origen y destino en una fila, ruta y categoría debajo. */
     private JComponent buildForm() {
         RoundPanel form = new RoundPanel(Color.WHITE, Theme.BORDER);
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
@@ -289,7 +291,9 @@ public class TripPanel extends JPanel {
     // ------------------------------------------------------------------ Datos
 
     /**
-     * @param catalog catálogo cargado
+     * Carga el catálogo desde la base de datos en los combos y el mapa del planificador.
+     *
+     * @param catalog catálogo cargado desde Oracle
      */
     public void setCatalog(Catalog catalog) {
         this.catalog = catalog;
@@ -297,8 +301,48 @@ public class TripPanel extends JPanel {
         for (VehicleCategory c : catalog.getCategories()) {
             category.addItem(c);
         }
+
+        List<City> dbCities = new ArrayList<>();
+        for (Municipality m : catalog.getMunicipalities()) {
+            String dept = catalog.departmentName(m.getDepartmentId());
+            dbCities.add(new City(m.getName(), dept, m.getLatitude(), m.getLongitude()));
+        }
+
+        loadingCities = true;
+        try {
+            if (dbCities.isEmpty()) {
+                TravelerUi.setComboItems(origin, dbCities, null);
+                TravelerUi.setComboItems(destination, dbCities, null);
+            } else {
+                City defaultOrigin = findCity(dbCities, "Bogotá", null);
+                City defaultDest = findCity(dbCities, "Medellín", "Antioquia");
+                if (defaultDest == defaultOrigin && dbCities.size() > 1) {
+                    defaultDest = dbCities.get(1);
+                }
+                TravelerUi.setComboItems(origin, dbCities, defaultOrigin);
+                TravelerUi.setComboItems(destination, dbCities, defaultDest);
+            }
+        } finally {
+            loadingCities = false;
+        }
+
         refreshRoutes();
         map.showTolls(catalog.getTolls());
+    }
+
+    private static City findCity(List<City> cities, String name, String department) {
+        String targetName = TravelerUi.normalize(name);
+        String targetDept = department == null ? null : TravelerUi.normalize(department);
+        for (City c : cities) {
+            String cityNorm = TravelerUi.normalize(c.getName());
+            boolean matchesName = cityNorm.equals(targetName) || cityNorm.startsWith(targetName);
+            boolean matchesDept = targetDept == null
+                    || TravelerUi.normalize(c.toString()).contains(targetDept);
+            if (matchesName && matchesDept) {
+                return c;
+            }
+        }
+        return cities.get(0);
     }
 
     /**
@@ -308,7 +352,7 @@ public class TripPanel extends JPanel {
      * escogida sigue sirviendo, se conserva.
      */
     private void refreshRoutes() {
-        if (catalog == null) {
+        if (catalog == null || loadingCities) {
             return;
         }
         Object previous = route.getSelectedItem();

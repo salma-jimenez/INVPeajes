@@ -6,6 +6,7 @@ import com.invpeajes.model.AssistanceResource;
 import com.invpeajes.model.AssistanceType;
 import com.invpeajes.model.Concessionaire;
 import com.invpeajes.model.Department;
+import com.invpeajes.model.Municipality;
 import com.invpeajes.model.PricedToll;
 import com.invpeajes.model.Route;
 import com.invpeajes.model.Toll;
@@ -15,9 +16,10 @@ import com.invpeajes.model.Vehicle;
 import com.invpeajes.model.VehicleCategory;
 import com.invpeajes.persistence.ConcessionaireDAO;
 import com.invpeajes.persistence.DataAccessException;
-import com.invpeajes.persistence.DepartmentDAO;
-import com.invpeajes.persistence.RouteDAO;
 import com.invpeajes.persistence.DatabaseFunctionsDAO;
+import com.invpeajes.persistence.DepartmentDAO;
+import com.invpeajes.persistence.MunicipalityDAO;
+import com.invpeajes.persistence.RouteDAO;
 import com.invpeajes.persistence.TravelerDAO;
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -35,12 +37,12 @@ import java.util.regex.Pattern;
  * Servicio de la pantalla del viajero (con cuenta o invitado).
  *
  * Reúne lo que necesita el viajero en un solo lugar: el catálogo de peajes con sus
- * nombres de departamento, ruta y concesionario; las tarifas; el costo de un viaje;
- * pedir asistencia en la vía y seguir sus solicitudes; y actualizar su cuenta.
- * No tiene SQL propio: usa los DAO y servicios que ya existen.
+ * nombres de departamento, ruta y concesionario; los municipios con coordenadas;
+ * las tarifas; el costo de un viaje; pedir asistencia en la vía y seguir sus solicitudes;
+ * y actualizar su cuenta. No tiene SQL propio: usa los DAO y servicios que ya existen.
  *
  * @author Salma Jiménez Vega
- * @version 1.0
+ * @version 1.2
  */
 public class TravelerService {
 
@@ -57,6 +59,7 @@ public class TravelerService {
     private final AssistanceService assistanceService;
     private final AssistanceResourceService resourceService;
     private final DepartmentDAO departmentDAO;
+    private final MunicipalityDAO municipalityDAO;
     private final ConcessionaireDAO concessionaireDAO;
     private final RouteDAO routeDAO;
     private final TravelerDAO travelerDAO;
@@ -66,28 +69,31 @@ public class TravelerService {
     public TravelerService() {
         this(new TollService(), new TollRateService(), new VehicleCategoryService(), new VehicleService(),
                 new AssistanceService(), new AssistanceResourceService(), new DepartmentDAO(),
-                new ConcessionaireDAO(), new RouteDAO(), new TravelerDAO());
+                new MunicipalityDAO(), new ConcessionaireDAO(), new RouteDAO(), new TravelerDAO());
     }
 
     /**
-     * Crea el servicio con dependencias inyectadas (útil para pruebas).
-     *
-     * @param tollService       servicio de peajes
-     * @param rateService       servicio de tarifas
-     * @param categoryService   servicio de categorías vehiculares
-     * @param vehicleService    servicio de vehículos
-     * @param assistanceService servicio de asistencias
-     * @param resourceService   servicio de recursos de asistencia
-     * @param departmentDAO     DAO de departamentos
-     * @param concessionaireDAO DAO de concesionarios
-     * @param routeDAO          DAO de rutas
-     * @param travelerDAO       DAO de viajeros
+     * Crea el servicio con dependencias inyectadas (compatibilidad con pruebas previas).
      */
     public TravelerService(TollService tollService, TollRateService rateService,
                            VehicleCategoryService categoryService, VehicleService vehicleService,
                            AssistanceService assistanceService, AssistanceResourceService resourceService,
                            DepartmentDAO departmentDAO, ConcessionaireDAO concessionaireDAO,
                            RouteDAO routeDAO, TravelerDAO travelerDAO) {
+        this(tollService, rateService, categoryService, vehicleService, assistanceService,
+                resourceService, departmentDAO, new MunicipalityDAO(), concessionaireDAO,
+                routeDAO, travelerDAO);
+    }
+
+    /**
+     * Crea el servicio con todas sus dependencias inyectadas.
+     */
+    public TravelerService(TollService tollService, TollRateService rateService,
+                           VehicleCategoryService categoryService, VehicleService vehicleService,
+                           AssistanceService assistanceService, AssistanceResourceService resourceService,
+                           DepartmentDAO departmentDAO, MunicipalityDAO municipalityDAO,
+                           ConcessionaireDAO concessionaireDAO, RouteDAO routeDAO,
+                           TravelerDAO travelerDAO) {
         this.tollService = tollService;
         this.rateService = rateService;
         this.categoryService = categoryService;
@@ -95,6 +101,7 @@ public class TravelerService {
         this.assistanceService = assistanceService;
         this.resourceService = resourceService;
         this.departmentDAO = departmentDAO;
+        this.municipalityDAO = municipalityDAO;
         this.concessionaireDAO = concessionaireDAO;
         this.routeDAO = routeDAO;
         this.travelerDAO = travelerDAO;
@@ -103,9 +110,9 @@ public class TravelerService {
     // ------------------------------------------------------------------ Catálogo
 
     /**
-     * Carga de una vez todo lo que la pantalla necesita para mostrar peajes.
+     * Carga de una vez todo lo que la pantalla necesita para mostrar peajes y planificar viajes.
      *
-     * @return catálogo con peajes, departamentos, rutas, concesionarios y categorías
+     * @return catálogo con peajes, departamentos, municipios, rutas, concesionarios y categorías
      * @throws DataAccessException si falla la base de datos
      */
     public Catalog loadCatalog() {
@@ -121,8 +128,8 @@ public class TravelerService {
         for (Concessionaire c : concessionaireDAO.findAll()) {
             concessionaires.put(c.getConcessionaireId(), c);
         }
-        return new Catalog(tollService.listTolls(), departments, routes, concessionaires,
-                categoryService.listAll());
+        return new Catalog(tollService.listTolls(), departments, municipalityDAO.findAll(),
+                routes, concessionaires, categoryService.listAll());
     }
 
     /**
@@ -304,14 +311,12 @@ public class TravelerService {
             throw new IllegalArgumentException("La ruta necesita al menos dos puntos");
         }
 
-        // Km recorridos desde el origen hasta cada punto de la vía
         double[] kmAt = new double[n];
         for (int i = 1; i < n; i++) {
             double[] a = points.get(i - 1);
             double[] b = points.get(i);
             kmAt[i] = kmAt[i - 1] + distanceKm(a[0], a[1], b[0], b[1]);
         }
-        // Se ajusta a la distancia que da el servicio de rutas para que el último km coincida
         double scale = kmAt[n - 1] > 0 ? road.getDistanceKm() / kmAt[n - 1] : 1;
 
         // Rectángulo que rodea la ruta: la base devuelve solo los peajes de ahí
@@ -363,16 +368,9 @@ public class TravelerService {
         return new TripPlan(found, total, road.getDistanceKm(), withoutRate, road);
     }
 
-    /**
-     * Punto del segmento a–b más cercano a (lat, lon), con una proyección plana local
-     * (precisa para segmentos cortos como los de una vía).
-     *
-     * @return {distancia en metros, posición en el segmento de 0 (en a) a 1 (en b)}
-     */
     private static double[] closestOnSegment(double lat, double lon, double[] a, double[] b) {
         double metersPerDegLat = 110_540.0;
         double metersPerDegLon = 111_320.0 * Math.cos(Math.toRadians(lat));
-        // Coordenadas en metros con el peaje como origen
         double ax = (a[1] - lon) * metersPerDegLon;
         double ay = (a[0] - lat) * metersPerDegLat;
         double bx = (b[1] - lon) * metersPerDegLon;
@@ -386,15 +384,6 @@ public class TravelerService {
         return new double[]{Math.sqrt(px * px + py * py), t};
     }
 
-    /**
-     * Distancia en línea recta entre dos puntos (fórmula de Haversine).
-     *
-     * @param lat1 latitud del primer punto
-     * @param lon1 longitud del primer punto
-     * @param lat2 latitud del segundo punto
-     * @param lon2 longitud del segundo punto
-     * @return distancia en km
-     */
     public static double distanceKm(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
@@ -404,14 +393,6 @@ public class TravelerService {
         return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    /**
-     * Peaje más cercano a un punto, para enviar allí la solicitud de asistencia.
-     *
-     * @param tolls     peajes entre los que se busca
-     * @param latitude  latitud del punto
-     * @param longitude longitud del punto
-     * @return el peaje más cercano, o null si la lista está vacía
-     */
     public static Toll nearestToll(List<Toll> tolls, double latitude, double longitude) {
         Toll best = null;
         double bestKm = Double.MAX_VALUE;
@@ -427,24 +408,6 @@ public class TravelerService {
 
     // ------------------------------------------------------------------ Asistencia
 
-    /**
-     * Registra una solicitud de asistencia. Le llega al Centro de asistencia del jefe de
-     * estación del peaje indicado. Si la placa no está registrada, se registra el vehículo
-     * con la categoría que indicó el viajero.
-     *
-     * @param traveler    viajero con cuenta, o null si es invitado
-     * @param type        tipo de asistencia
-     * @param tollId      peaje que la atiende (el más cercano)
-     * @param plate       placa del vehículo
-     * @param categoryId  categoría del vehículo (solo se usa si la placa es nueva)
-     * @param phone       teléfono de contacto
-     * @param description qué pasó
-     * @param latitude    latitud del incidente, o null
-     * @param longitude   longitud del incidente, o null
-     * @return número de la solicitud
-     * @throws ValidationException si algún dato no es válido
-     * @throws DataAccessException si falla la base de datos
-     */
     public int requestAssistance(Traveler traveler, AssistanceType type, int tollId, String plate,
                                  int categoryId, String phone, String description,
                                  Double latitude, Double longitude) {
@@ -475,12 +438,6 @@ public class TravelerService {
         return assistanceService.register(assistance);
     }
 
-    /**
-     * Solicitudes de un viajero con cuenta, más recientes primero.
-     *
-     * @param traveler viajero
-     * @return sus solicitudes (vacía si es invitado)
-     */
     public List<Assistance> myRequests(Traveler traveler) {
         if (traveler == null || traveler.getTravelerId() == null) {
             return Collections.emptyList();
@@ -488,12 +445,6 @@ public class TravelerService {
         return assistanceService.listByTraveler(traveler.getTravelerId());
     }
 
-    /**
-     * Detalle de una solicitud: sus cambios de estado y el recurso asignado.
-     *
-     * @param assistance solicitud
-     * @return detalle listo para mostrar
-     */
     public RequestDetail requestDetail(Assistance assistance) {
         List<AssistanceHistory> history = assistanceService.getHistory(assistance.getAssistanceId());
         AssistanceResource resource = assistance.getResourceId() == null ? null
@@ -546,21 +497,41 @@ public class TravelerService {
     public static final class Catalog {
         private final List<Toll> tolls;
         private final Map<String, String> departments;
+        private final List<Municipality> municipalities;
         private final Map<String, String> routes;
         private final Map<Integer, Concessionaire> concessionaires;
         private final List<VehicleCategory> categories;
 
         /**
-         * @param tolls           peajes
-         * @param departments     código → nombre del departamento
-         * @param routes          código → nombre de la ruta
-         * @param concessionaires ID → concesionario
+         * Constructor de compatibilidad sin municipios.
+         *
+         * @param tolls           peajes del catálogo
+         * @param departments     mapa código → nombre del departamento
+         * @param routes          mapa código → nombre de la ruta
+         * @param concessionaires mapa ID → concesionario
          * @param categories      categorías vehiculares
          */
         public Catalog(List<Toll> tolls, Map<String, String> departments, Map<String, String> routes,
                        Map<Integer, Concessionaire> concessionaires, List<VehicleCategory> categories) {
+            this(tolls, departments, Collections.emptyList(), routes, concessionaires, categories);
+        }
+
+        /**
+         * Crea el catálogo completo del viajero incluyendo los municipios.
+         *
+         * @param tolls           peajes del catálogo
+         * @param departments     mapa código → nombre del departamento
+         * @param municipalities  lista de municipios con sus coordenadas
+         * @param routes          mapa código → nombre de la ruta
+         * @param concessionaires mapa ID → concesionario
+         * @param categories      categorías vehiculares
+         */
+        public Catalog(List<Toll> tolls, Map<String, String> departments,
+                       List<Municipality> municipalities, Map<String, String> routes,
+                       Map<Integer, Concessionaire> concessionaires, List<VehicleCategory> categories) {
             this.tolls = tolls;
             this.departments = departments;
+            this.municipalities = municipalities == null ? Collections.emptyList() : municipalities;
             this.routes = routes;
             this.concessionaires = concessionaires;
             this.categories = categories;
@@ -572,6 +543,10 @@ public class TravelerService {
 
         public Map<String, String> getDepartments() {
             return departments;
+        }
+
+        public List<Municipality> getMunicipalities() {
+            return municipalities;
         }
 
         public Map<String, String> getRoutes() {
@@ -586,35 +561,19 @@ public class TravelerService {
             return categories;
         }
 
-        /**
-         * @param departmentId código del departamento
-         * @return nombre del departamento, o el código si no se conoce
-         */
         public String departmentName(String departmentId) {
             return departments.getOrDefault(departmentId, departmentId == null ? "—" : departmentId);
         }
 
-        /**
-         * @param routeId código de la ruta
-         * @return nombre de la ruta, o el código si no se conoce
-         */
         public String routeName(String routeId) {
             return routes.getOrDefault(routeId, routeId == null ? "—" : routeId);
         }
 
-        /**
-         * @param concessionaireId ID del concesionario
-         * @return nombre del concesionario, o "—"
-         */
         public String concessionaireName(Integer concessionaireId) {
             Concessionaire c = concessionaireId == null ? null : concessionaires.get(concessionaireId);
             return c == null ? "—" : c.getName();
         }
 
-        /**
-         * @param tollId ID del peaje
-         * @return el peaje, o null si no está
-         */
         public Toll toll(int tollId) {
             for (Toll toll : tolls) {
                 if (toll.getTollId() == tollId) {
@@ -625,7 +584,6 @@ public class TravelerService {
         }
     }
 
-    /** Un peaje del viaje con su precio y los km acumulados hasta él. */
     public static final class TripStop {
         private final Toll toll;
         private final BigDecimal price;
@@ -641,7 +599,6 @@ public class TravelerService {
             return toll;
         }
 
-        /** @return precio para la categoría, o null si el peaje no tiene tarifa registrada */
         public BigDecimal getPrice() {
             return price;
         }
@@ -651,7 +608,6 @@ public class TravelerService {
         }
     }
 
-    /** Resultado de planificar un viaje. */
     public static final class TripPlan {
         private final List<TripStop> stops;
         private final BigDecimal total;
@@ -659,14 +615,10 @@ public class TravelerService {
         private final int withoutRate;
         private final RouteService.RoadRoute road;
 
-        /** Plan aproximado (línea recta), sin ruta por carretera. */
         public TripPlan(List<TripStop> stops, BigDecimal total, double distanceKm, int withoutRate) {
             this(stops, total, distanceKm, withoutRate, null);
         }
 
-        /**
-         * @param road ruta por carretera usada para el cálculo, o null si es aproximado
-         */
         public TripPlan(List<TripStop> stops, BigDecimal total, double distanceKm, int withoutRate,
                         RouteService.RoadRoute road) {
             this.stops = stops;
@@ -676,12 +628,10 @@ public class TravelerService {
             this.road = road;
         }
 
-        /** @return true si se calculó sobre la ruta real por carretera */
         public boolean isOnRoad() {
             return road != null;
         }
 
-        /** @return la ruta por carretera, o null si el plan es aproximado */
         public RouteService.RoadRoute getRoad() {
             return road;
         }
@@ -694,21 +644,15 @@ public class TravelerService {
             return total;
         }
 
-        /**
-         * @return distancia por carretera si {@link #isOnRoad()}; si no, distancia aproximada
-         *         en línea recta pasando por cada peaje
-         */
         public double getDistanceKm() {
             return distanceKm;
         }
 
-        /** @return cuántos peajes del viaje no tienen tarifa para la categoría */
         public int getWithoutRate() {
             return withoutRate;
         }
     }
 
-    /** Detalle de una solicitud de asistencia para el viajero. */
     public static final class RequestDetail {
         private final Assistance assistance;
         private final List<AssistanceHistory> history;
@@ -728,7 +672,6 @@ public class TravelerService {
             return history;
         }
 
-        /** @return recurso asignado (grúa, ambulancia...), o null si aún no tiene */
         public AssistanceResource getResource() {
             return resource;
         }
